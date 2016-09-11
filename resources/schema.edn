@@ -1,0 +1,24 @@
+[
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :character/name
+  :db/valueType           :db.type/string
+  :db/cardinality         :db.cardinality/one
+  :db/doc                 "A character's name"
+  :db/unique              :db.unique/identity
+  :db.install/_attribute  :db.part/db}
+
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :character/password-hash
+  :db/valueType           :db.type/string
+  :db/cardinality         :db.cardinality/one
+  :db/doc                 "A character's password hash"
+  :db.install/_attribute  :db.part/db}
+
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :character/password-salt
+  :db/valueType           :db.type/string
+  :db/cardinality         :db.cardinality/one
+  :db/doc                 "A character's password salt"
+  :db.install/_attribute  :db.part/db}
+]
+
