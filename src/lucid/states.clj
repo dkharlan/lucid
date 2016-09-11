@@ -1,29 +1,31 @@
 (ns lucid.states
   (:require [reduce-fsm :refer [defsm-inc] :as fsm]))
 
-(def test-identities {"Bob" "foobar"
-                      "Billy" "12345"
-                      "Joe" "changeme"})
+(def identities (atom {}))
+
+(def character-name-regex #"^[A-z]{3,}$")
+(def password-regex #"^[A-Za-z\d]{8,}$")
+
+;;; guard predicates
 
 (defn character-exists? [[_ character-name]]
   (and
     (string? character-name)
-    (some #(= character-name %) (keys test-identities))))
+    (some #(= character-name %) (keys @identities))))
 
 (defn password-is-valid? [[{{:keys [character-name]} :login} password]]
-  (= password (get test-identities character-name)))
+  (= password (get @identities character-name)))
 
 (defn password-matches-initial? [[{{:keys [initial-password]} :login :as accum} password]]
   (= password initial-password))
+
+;;; actions
 
 (defn- add-character-name [accumulator input & _]
   (assoc-in accumulator [:login :character-name] input))
 
 (defn- add-initial-password [accumulator input & _]
   (assoc-in accumulator [:login :initial-password] input))
-
-(def character-name-regex #"^[A-z]{3,}$")
-(def password-regex #"^[A-Za-z\d]{8,}$")
 
 (defn print-name-rules [accumulator & _]
   (println "Character names must be alphabetical characters only and must be at least three letters.")
@@ -42,8 +44,10 @@
   accumulator)
 
 (defn log-character-in [accumulator & _]
-  (println "Thanks for creating your character," (str (get-in accumulator [:login :character-name]) "!"))
-  (update-in accumulator [:login] dissoc :initial-password))
+  (let [character-name (get-in accumulator [:login :character-name])]
+    (println "Thanks for creating your character," (str character-name "!"))
+    (swap! identities assoc character-name (get-in accumulator [:login :initial-password]))
+    (update-in accumulator [:login] dissoc :initial-password)))
 
 (defn print-goodbye [accumulator & _]
   (println "Goodbye."))
