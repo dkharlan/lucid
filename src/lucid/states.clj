@@ -1,16 +1,17 @@
 (ns lucid.states
   (:require [reduce-fsm :refer [defsm-inc] :as fsm]))
 
+(def test-identities {"Bob" "foobar"
+                      "Billy" "12345"
+                      "Joe" "changeme"})
+
 (defn character-exists? [[_ character-name]]
   (and
     (string? character-name)
-    (some #(= character-name %) ["Bob" "Billy" "Joe"])))
+    (some #(= character-name %) (keys test-identities))))
 
 (defn password-is-valid? [[{{:keys [character-name]} :login} password]]
-  (let [name->password {"Bob" "foobar"
-                        "Billy" "12345"
-                        "Joe" "changeme"}]
-    (= password (get name->password character-name))))
+  (= password (get test-identities character-name)))
 
 (defn- add-character-name [accumulator input current-state next-state]
   (assoc-in accumulator [:login :character-name] input))
