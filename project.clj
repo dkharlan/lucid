@@ -2,7 +2,11 @@
   :description "A flexible MUD framework written in Clojure"
   :dependencies [[org.clojure/clojure "1.9.0-alpha12"]
                  [clj-time "0.12.0"]
-                 [reduce-fsm "0.1.4"]]
+                 [reduce-fsm "0.1.4"]
+                 [com.datomic/datomic-free "0.9.5394"]
+                 [org.clojure/data.codec "0.1.0"]
+                 [crypto-random "1.2.0"]
+                 [buddy/buddy-hashers "1.0.0"]]
   :main ^:skip-aot lucid.core
   :target-path "target/%s"
   :repl-options {:init (do

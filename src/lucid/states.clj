@@ -1,30 +1,28 @@
 (ns lucid.states
-  (:require [reduce-fsm :refer [defsm-inc] :as fsm]))
-
-(def identities (atom {}))
+  (:require [reduce-fsm :refer [defsm-inc] :as fsm]
+            [lucid.characters :as chars]))
 
 (def character-name-regex #"^[A-z]{3,}$")
 (def password-regex #"^[A-Za-z\d]{8,}$")
-
-;;; guard predicates
-
-(defn character-exists? [[_ character-name]]
-  (and
-    (string? character-name)
-    (some #(= character-name %) (keys @identities))))
-
-(defn password-is-valid? [[{{:keys [character-name]} :login} password]]
-  (= password (get @identities character-name)))
 
 (defn password-matches-initial? [[{{:keys [initial-password]} :login :as accum} password]]
   (= password initial-password))
 
 ;;; actions
 
-(defn- add-character-name [accumulator input & _]
+(defn add-character-name [accumulator input & _]
   (assoc-in accumulator [:login :character-name] input))
 
-(defn- add-initial-password [accumulator input & _]
+(defn add-new-character-name [accumulator input & _]
+  (println "Hello! I don't recognize you.  Please enter a new password.")
+  (add-character-name accumulator input))
+
+(defn add-existing-character-name [accumulator input & _]
+  (println "Welcome back," (str input ".") "Please enter your password.")
+  (add-character-name accumulator input))
+
+(defn add-initial-password [accumulator input & _]
+  (println "Please confirm your password.")
   (assoc-in accumulator [:login :initial-password] input))
 
 (defn print-name-rules [accumulator & _]
@@ -46,7 +44,7 @@
 (defn log-character-in [accumulator & _]
   (let [character-name (get-in accumulator [:login :character-name])]
     (println "Thanks for creating your character," (str character-name "!"))
-    (swap! identities assoc character-name (get-in accumulator [:login :initial-password]))
+    (chars/create-character! (:login accumulator))
     (update-in accumulator [:login] dissoc :initial-password)))
 
 (defn print-goodbye [accumulator & _]
@@ -54,11 +52,11 @@
 
 (defsm-inc login
   [[:awaiting-name
-    [[_ character-name-regex] :guard character-exists?] -> {:action add-character-name} :awaiting-password
-    [[_ character-name-regex] :guard #(not (character-exists? %))] -> {:action add-character-name} :awaiting-initial-password
+    [[_ character-name-regex] :guard chars/character-exists?] -> {:action add-existing-character-name} :awaiting-password
+    [[_ character-name-regex]] -> {:action add-new-character-name} :awaiting-initial-password
     [_] -> {:action print-name-rules} :awaiting-name]
    [:awaiting-password
-    [_ :guard password-is-valid?] -> {:action print-login-message} :logged-in
+    [_ :guard chars/password-is-valid?] -> {:action print-login-message} :logged-in
     [_] -> {:action print-invalid-password} :zombie]
    [:awaiting-initial-password
     [[_ password-regex]] -> {:action add-initial-password} :awaiting-password-confirmation
