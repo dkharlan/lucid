@@ -2,8 +2,6 @@
   (:require [reduce-fsm :refer [defsm-inc] :as fsm]
             [lucid.characters :as chars]))
 
-(def identities (atom {}))
-
 (def character-name-regex #"^[A-z]{3,}$")
 (def password-regex #"^[A-Za-z\d]{8,}$")
 

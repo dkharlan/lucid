@@ -6,28 +6,28 @@
   (-> db/uri (d/connect)))
 
 (defn get-db []
-  (-> db/uri (d/connect) (d/db)))
+  (-> (get-connection) (d/db)))
 
-(defn does-character-exist? [character-name]
+(defn character-exists? [character-name]
   (-> (d/q '[:find ?e
-             :where [?e :character/name character-name]]
-        (get-db))
+             :in $ ?character-name
+             :where [?e :character/name ?character-name]]
+        (get-db)
+        character-name)
     (not-empty)
     (boolean)))
 
-(defn get-password-hash-and-salt-for-character [character-name]
-  (let [hash-and-salt (-> (d/q '[:find ?password-hash-salt 
-                                 :where
-                                 [_ :character/name character-name]
-                                 [_ :character/password-hash-and-salt ?password-salt]]
-                            (get-db))
-                        (first)
-                        (first))]
-    hash-and-salt))
+(defn get-character [character-name]
+  (-> '[:find (pull ?e [*])
+        :in $ ?character-name
+        :where [?e :character/name ?character-name]]
+    (d/q (get-db) character-name)
+    (first)
+    (first)))
 
-(defn create-character! [name password-hash-and-salt]
+(defn create-character! [character-name password-hash-and-salt]
   @(d/transact (get-connection)
      [{:db/id (d/tempid :db.part/user)
-       :character/name name
+       :character/name character-name
        :character/password-hash-and-salt password-hash-and-salt}]))
 
