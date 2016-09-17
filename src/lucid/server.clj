@@ -5,8 +5,11 @@
             [manifold.stream :as s]
             [manifold.stream :as ex]))
 
-(defn close! [streams-atom stream-id info]
-  (swap! streams-atom dissoc stream-id)
+(defn close! [session-details-atom stream-id info]
+  (swap! session-details-atom
+    #(-> %
+       (update-in [:streams] dissoc stream-id)
+       (update-in [:states] dissoc stream-id)))
   (log/debug "Connection from" (:remote-addr info) "closed"))
 
 (def bytes->string [bytes]
@@ -15,7 +18,7 @@
     (clojure.string/trim)))
 
 ;; TODO need a better name
-(defn run-state-for-input! [{:keys [stream-id message streams]}]
+(defn run-state-for-input! [{:keys [stream-id message session-details-atom]}]
   (let [message ]
     (log/debug "Message from" (str stream-id ":") message)
     ;; TODO feed message, derefed streams into fsm (retrieved from states-atom)
@@ -25,39 +28,44 @@
     ;; TODO swap! states dissoc side effects
     ))
 
-(defn accept-new-connection! [handler-stream streams-atom stream info]
+(defn accept-new-connection! [session-details-atom handler-stream fsm stream info]
   (let [stream-id (uuid/v1)]
     (log/debug "Accepting new connection with details" info)
-    (s/on-closed stream (partial close! streams-atom stream-id info))
+    (s/on-closed stream (partial close! session-details-atom stream-id info))
     (s/connect-via
       stream
       #(s/put! handler-stream
          {:stream-id
           :message (bytes->string %)
-          :streams @streams-atom})
+          :session-details-atom session-details-atom})
       handler-stream)
-    (swap! streams-atom assoc stream-id stream)))
+    (swap! session-details-atom
+      #(-> %
+         (assoc-in [:streams stream-id] stream)
+         (assoc-in [:states stream-id] (fsm {}))))))
 
 (defprotocol Server
   (stop-server! [server-info]))
 
-(defrecord ServerInfo [streams tcp-server port handler-stream]
+(defrecord ServerInfo [session-details-atom tcp-server port handler-stream]
   Server
-  (stop-server! [{:keys [streams tcp-server]}]
-    (doseq [stream (vals @streams)]
-      (s/close! stream))
-    (.close tcp-server)
-    (log/info "Stopped server")))
+  (stop-server! [{:keys [session-details-atom tcp-server]}]
+    (let [{:keys [streams states]} @session-details-atom]
+      (doseq [stream (vals @streams)]
+        (s/close! stream))
+      (.close tcp-server)
+      (reset! session-details-atom nil)
+      (log/info "Stopped server"))))
 
 (defn start-server! [port]
-  (let [streams-atom (atom {})
+  (let [session-details-atom (atom {})
         handler-stream (s/stream* {:executor (ex/fixed-thread-executor 1)})
         _ (s/consume handle-input! handler-stream)
         server (tcp/start-server
                  (partial accept-new-connection!
-                   handler-stream
-                   streams-atom)
+                   session-details-atom
+                   handler-stream)
                  {:port port})]
     (log/info "Started server on port" port)
-    (->ServerInfo streams server port)))
+    (->ServerInfo session-details-atom server port)))
 
