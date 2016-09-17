@@ -3,10 +3,15 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [clj-time "0.12.0"]
                  [reduce-fsm "0.1.4"]
-                 [com.datomic/datomic-free "0.9.5394"]
+                 [com.datomic/datomic-free "0.9.5394"
+                  :exclusions [org.hornetq/hornetq-server]] ;; see netty note below
                  [org.clojure/data.codec "0.1.0"]
                  [crypto-random "1.2.0"]
                  [buddy/buddy-hashers "1.0.0"]
+                 ;; see https://groups.google.com/forum/#!topic/datomic/pZombLbp-tQ
+                 ;; for the next two lines
+                 [io.netty/netty-all "4.1.2.Final"]
+                 [org.clojars.markdingram/hornetq-server "2.4.8.Final"]
                  [aleph "0.4.2-alpha8"]
                  [com.taoensso/timbre "4.7.4"]
                  [manifold "0.1.6-alpha1"]]
