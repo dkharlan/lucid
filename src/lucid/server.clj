@@ -8,11 +8,17 @@
   (swap! streams-atom dissoc stream-id)
   (log/debug "Connection from" (:remote-addr info) "closed"))
 
+(defn handle-input! [stream-id bytes]
+  (let [message (-> bytes
+                  (String. "UTF-8")
+                  (clojure.string/trim))]
+    (log/debug "Message from" (str stream-id ":") message)))
+
 (defn accept-new-connection! [streams-atom stream info]
   (let [stream-id (uuid/v1)]
     (log/debug "Accepting new connection with details" info)
     (s/on-closed stream (partial close! streams-atom stream-id info))
-    (s/connect stream stream)
+    (s/consume (partial handle-input! stream-id) stream)
     (swap! streams-atom assoc stream-id stream)))
 
 (defprotocol Server
