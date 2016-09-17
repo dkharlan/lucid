@@ -7,7 +7,9 @@
                  [org.clojure/data.codec "0.1.0"]
                  [crypto-random "1.2.0"]
                  [buddy/buddy-hashers "1.0.0"]
-                 [aleph "0.4.2-alpha8"]]
+                 [aleph "0.4.2-alpha8"]
+                 [com.taoensso/timbre "4.7.4"]
+                 [manifold "0.1.6-alpha1"]]
   :main ^:skip-aot lucid.core
   :target-path "target/%s"
   :repl-options {:init (do
