@@ -14,7 +14,8 @@
                  [org.clojars.markdingram/hornetq-server "2.4.8.Final"]
                  [aleph "0.4.2-alpha8"]
                  [com.taoensso/timbre "4.7.4"]
-                 [manifold "0.1.6-alpha1"]]
+                 [manifold "0.1.6-alpha1"]
+                 [danlentz/clj-uuid "0.1.6"]]
   :main ^:skip-aot lucid.core
   :target-path "target/%s"
   :repl-options {:init (do
