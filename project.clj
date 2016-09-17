@@ -6,7 +6,8 @@
                  [com.datomic/datomic-free "0.9.5394"]
                  [org.clojure/data.codec "0.1.0"]
                  [crypto-random "1.2.0"]
-                 [buddy/buddy-hashers "1.0.0"]]
+                 [buddy/buddy-hashers "1.0.0"]
+                 [aleph "0.4.2-alpha8"]]
   :main ^:skip-aot lucid.core
   :target-path "target/%s"
   :repl-options {:init (do
