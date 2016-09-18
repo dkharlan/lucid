@@ -5,6 +5,21 @@
 (def character-name-regex #"^[A-z]{3,}$")
 (def password-regex #"^[A-Za-z\d]{8,}$")
 
+;;
+;; states can keep anything in their accumulator, but the :side-effects entry is treated
+;; specially. state actions can use that to accumulate side effects to be applied
+;; by the fsm caller. actions or state guards should not depend on :side-effects, as
+;; callers are expected to dissoc it before sending additional inputs to the fsm.
+;;
+;; the value of :side-effects is a map with entries corresponding to distinct state
+;; containers. e.g., :db for a database, :server for transient server state, etc.
+;;
+;; for lucid probably 3 will be needed:
+;;    :db for datomic
+;;    :server for session -> character association, session termination, etc.
+;;    :output for output to streams
+;;
+
 (defn password-matches-initial? [[{{:keys [initial-password]} :login :as accum} password]]
   (= password initial-password))
 

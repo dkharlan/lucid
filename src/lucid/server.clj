@@ -3,7 +3,8 @@
             [clj-uuid :as uuid]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
-            [manifold.stream :as ex]))
+            [manifold.stream :as ex]
+            [reduce-fsm :as fsm]))
 
 (defn close! [session-details-atom stream-id info]
   (swap! session-details-atom
@@ -16,17 +17,6 @@
   (-> bytes
     (String. "UTF-8")
     (clojure.string/trim)))
-
-;; TODO need a better name
-(defn run-state-for-input! [{:keys [stream-id message session-details-atom]}]
-  (let [message ]
-    (log/debug "Message from" (str stream-id ":") message)
-    ;; TODO feed message, derefed streams into fsm (retrieved from states-atom)
-    ;; TODO for each side effect:
-    ;; TODO    if stream side effect, write to target stream
-    ;; TODO    if db side effects, transact
-    ;; TODO swap! states dissoc side effects
-    ))
 
 (defn accept-new-connection! [session-details-atom handler-stream fsm stream info]
   (let [stream-id (uuid/v1)]
@@ -57,10 +47,31 @@
       (reset! session-details-atom nil)
       (log/info "Stopped server"))))
 
+;; TODO see long comment in lucid.states
+(defn handle-message! [{:keys [stream-id message session-details-atom]}]
+  (log/debug "Message from" (str stream-id ":") message)
+  (let [session-details @session-details-atom
+        fsm (get-in session-details [:states stream-id])
+        next-state (fsm/fsm-event fsm message)]
+    (if (= :zombie (:state next-state))
+      ;; TODO append dissoc to side-effects
+      )
+    (doseq [side-effect (:side-effects next-state)]
+      )
+    
+    ;; TODO return deferred that yields true when handler-stream is exhausted
+    )
+  ;; TODO feed message, derefed streams into fsm (retrieved from states-atom)
+  ;; TODO for each side effect:
+  ;; TODO    if stream side effect, write to target stream
+  ;; TODO    if db side effects, transact
+  ;; TODO swap! states dissoc side effects
+  )
+
 (defn start-server! [port]
   (let [session-details-atom (atom {})
         handler-stream (s/stream* {:executor (ex/fixed-thread-executor 1)})
-        _ (s/consume handle-input! handler-stream)
+        _ (s/consume handle-message! handler-stream)
         server (tcp/start-server
                  (partial accept-new-connection!
                    session-details-atom
