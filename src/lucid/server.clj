@@ -3,7 +3,6 @@
             [clj-uuid :as uuid]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
-            [manifold.stream :as ex]
             [reduce-fsm :as fsm]))
 
 (defn close! [session-details-atom stream-id info]
@@ -33,19 +32,6 @@
       #(-> %
          (assoc-in [:streams stream-id] stream)
          (assoc-in [:states stream-id] (fsm {}))))))
-
-(defprotocol Server
-  (stop-server! [server-info]))
-
-(defrecord ServerInfo [session-details-atom tcp-server port handler-stream]
-  Server
-  (stop-server! [{:keys [session-details-atom tcp-server]}]
-    (let [{:keys [streams states]} @session-details-atom]
-      (doseq [stream (vals @streams)]
-        (s/close! stream))
-      (.close tcp-server)
-      (reset! session-details-atom nil)
-      (log/info "Stopped server"))))
 
 ;; TODO see long comment in lucid.states
 (defn handle-message! [{:keys [stream-id message session-details-atom]}]
@@ -79,4 +65,55 @@
                  {:port port})]
     (log/info "Started server on port" port)
     (->ServerInfo session-details-atom server port)))
+
+;; TODO old stuff above
+
+(defprotocol StatefulServer
+  (start-server! [server-info])
+  (stop-server! [server-info]))
+
+(defrecord Server [descriptors message-buffer acceptor tcp-server update-thread]
+  StatefulServer
+  (start-server [{:keys [tcp-server update-thread] :as this}]
+    @tcp-server
+    (.start update-thread)
+    this)
+  (stop-server! [{:keys [tcp-server update-thread]}]
+    (throw (UnsupportedOperationException.))
+    (comment
+      (let [{:keys [streams states]} @session-details-atom]
+         (doseq [stream (vals @streams)]
+           (s/close! stream))
+         (.close tcp-server)
+         (reset! session-details-atom nil)
+         (log/info "Stopped server")))))
+
+(defn- collect! [stream]
+  (loop [messages []]
+    (let [message (s/take! stream :nothing)]
+      (if (= message :nothing)
+        messages
+        (recur (conj messages messages))))))
+
+(defn update! [message-buffer]
+  (while true
+    (let [messages (collect! message-buffer)]
+      (doseq [{:keys [descriptor-id message]} messages]
+        (println descriptor-id "says" message)))
+    (Thread/sleep 100) ;; TODO replace this with something more robust
+    ))
+
+(defn make-server [port]
+  (let [descriptors    (atom)
+        message-buffer (s/buffered-stream 1000)
+        acceptor       (partial accept-new-connection!
+                         descriptors message-buffer)
+        tcp-server     (delay
+                         (tcp/start-server
+                           acceptor
+                           message-buffer))
+        update-thread  (Thread.
+                         (partial update! message-buffer)
+                         "update-thread")]
+    (->Server descriptors message-buffer acceptor tcp-server update-thread)))
 

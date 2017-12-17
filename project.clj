@@ -1,6 +1,6 @@
 (defproject lucid "0.1.0-SNAPSHOT"
   :description "A flexible MUD framework written in Clojure"
-  :dependencies [[org.clojure/clojure "1.8.0"]
+  :dependencies [[org.clojure/clojure "1.9.0"]
                  [clj-time "0.12.0"]
                  [reduce-fsm "0.1.4"]
                  [com.datomic/datomic-free "0.9.5394"
