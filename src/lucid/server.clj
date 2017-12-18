@@ -27,35 +27,30 @@
     (.close @tcp-server)
     (log/info "TCP socket server shutdown.")
     (reset! descriptors nil)
-    (s/put! updater-signal ::shutdown)
-    (let [signal @(s/try-take! updater-signal nil 5000 ::shutdown-timeout)]
-      (case signal
-        ;; TODO how to handle ::shutdown-timeout case?
-        ::shutdown-timeout (let [error-message "Update thread has not acknowledged shutdown signal."]
-                             (log/error error-message)
-                             (throw (ex-info error-message {:thread update-thread})))
-        ::cleaned-up       (log/info "Update thread has been stopped.")
-        (log/warn "Received unexpected signal" signal "from update thread.")))))
+    (if @(s/put! updater-signal ::shutdown)
+      (log/info "Update thread has received shutdown signal.")
+      (log/error "Failed to notify update thread of shutdown!"))))
 
 (defn close! [descriptor descriptor-id info]
   (swap! descriptor dissoc descriptor-id)
   (log/debug "Connection from" (:remote-addr info) "closed"))
 
 (defn accept-new-connection! [descriptors message-buffer stream info]
+  (log/debug "New connection initiated:" info)
   (let [descriptor-id (uuid/v1)]
-    (log/debug "Accepting new connection with details" info)
     (s/on-closed stream (partial close! descriptors descriptor-id info))
     (s/connect-via
       stream
       #(s/put! message-buffer 
          {:descriptor-id descriptor-id :message (util/bytes->string %)})
       message-buffer)
-    (swap! descriptors assoc (->Descriptor {:id descriptor-id :stream stream}))))
+    (swap! descriptors assoc (->Descriptor {:id descriptor-id :stream stream}))
+    (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
 (defn- collect! [stream]
   (loop [messages []]
-    (let [message @(s/take! stream ::nothing)]
+    (let [message @(s/try-take! stream nil 0 ::nothing)]
       (if (= message ::nothing)
         messages
         (recur (conj messages messages))))))
@@ -63,16 +58,14 @@
 ;; TODO replace sleep with something more robust
 (defn update! [message-buffer updater-signal]
   (log/info "Update thread started.")
-  (while (not= ::shutdown @(s/take! updater-signal ::nothing))
-    (log/debug "Checked for signals")
+  (while (not= ::shutdown @(s/try-take! updater-signal nil 0 ::nothing))
     (let [messages (collect! message-buffer)]
-      (log/debug "Have" (count messages) "messages to process")
-      (doseq [{:keys [descriptor-id message]} messages]
+      (doseq [{:keys [descriptor-id message] :as msg} messages]
+        (log/debug "Message:" msg)
         (log/info descriptor-id "says" message)))
     (Thread/sleep 100)) 
-  (log/info "Update thread stopping...")
   ;; TODO any cleanup goes here
-  (s/put! updater-signal ::cleaned-up))
+  (log/info "Update thread finished cleaning up."))
 
 (defn make-server [port]
   (let [descriptors    (atom {})
