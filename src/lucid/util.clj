@@ -22,7 +22,8 @@
 (defn all-thread-info$ []
   (map thread-info$ (all-threads$)))
 
-;; TODO modified from taoensso.timbre/default-output-fn
+;; adapted from taoensso.timbre/default-output-fn as of [com.taoensso/timbre "4.10.0"]
+;; TODO add middle ellipsis and padding for thread name to keep logs aligned
 (defn logger-output-with-thread 
   ([     data] (logger-output-with-thread nil data))
   ([opts data] ; For partials
@@ -33,7 +34,7 @@
      (str
              (force timestamp_)       " "
              (force hostname_)        " "
-       (str/upper-case (name level))  " "
+       (format "%-5s" (str/upper-case (name level)))   " "
        "[" (or ?ns-str ?file "?") ":" (or ?line "?") "]"
        "(" thread-name ")"
        " - "
