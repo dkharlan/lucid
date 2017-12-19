@@ -22,7 +22,7 @@
                          (require '[alembic.still :as alembic]))}
   :profiles {:uberjar {:aot :all}
              :dev {:dependencies [[alembic "0.3.2"]]}
-             :repl {:dependencies [[acyclic/squiggly-clojure "0.1.6"]]
+             :repl {:dependencies [[acyclic/squiggly-clojure "0.1.8"]]
                     :env {:squiggly {:checkers [:eastwood :kibit]
                                      :eastwood-options {:add-linters [:unused-locals
                                                                       :unused-fn-args
