@@ -72,18 +72,12 @@
         (log/info descriptor-id "says" (str "\"" message "\""))))
     ;; TODO replace with something more robust
     (Thread/sleep 100))
-
-  
   ;; TODO any cleanup goes here
   (log/info "Update thread finished cleaning up."))
 
 (defn make-server [port]
   (let [descriptors    (atom {})
-
-        ;; TODO closes when upstream is closed... fix
-        ;; TODO may have to fiddle with the buffer length
-        message-buffer (s/buffered-stream 1000)
-
+        message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
         acceptor       (partial accept-new-connection! descriptors message-buffer)
         tcp-server     (delay (tcp/start-server acceptor {:port port}))
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
