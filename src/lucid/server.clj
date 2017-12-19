@@ -45,8 +45,8 @@
         (log/debug "Message:" msg)
         (log/info descriptor-id "says" (str "\"" message "\""))
         (doseq [{:keys [id stream]} (vals @descriptors)]
-          (log/debug "Sending to" id)
-          (if (not= id descriptor-id)
+          (when (not= id descriptor-id)
+            (log/debug "Sending to" id)
             (s/put! stream (str descriptor-id " says " (str "\"" message "\"") "\n"))))))
     (Thread/sleep 100)) ;; TODO replace Thread/sleep with something more robust
   ;; TODO any cleanup goes here
