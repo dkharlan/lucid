@@ -61,7 +61,7 @@
         messages
         (recur (conj messages message))))))
 
-(defn update! [message-buffer updater-signal]
+(defn update! [descriptors message-buffer updater-signal]
   (log/info "Update thread started.")
   (while (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
            (and (not= ::shutdown signal) (not (nil? signal))))
@@ -69,9 +69,12 @@
       (doseq [{:keys [descriptor-id message] :as msg} messages]
         ;; TODO input processing logic goes here
         (log/debug "Message:" msg)
-        (log/info descriptor-id "says" (str "\"" message "\""))))
-    ;; TODO replace with something more robust
-    (Thread/sleep 100))
+        (log/info descriptor-id "says" (str "\"" message "\""))
+        (doseq [{:keys [id stream]} (vals @descriptors)]
+          (log/debug "Sending to" id)
+          (if (not= id descriptor-id)
+            (s/put! stream (str descriptor-id " says " (str "\"" message "\"") "\n"))))))
+    (Thread/sleep 100)) ;; TODO replace Thread/sleep with something more robust
   ;; TODO any cleanup goes here
   (log/info "Update thread finished cleaning up."))
 
@@ -81,7 +84,7 @@
         acceptor       (partial accept-new-connection! descriptors message-buffer)
         tcp-server     (delay (tcp/start-server acceptor {:port port}))
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
-        updater        (partial update! message-buffer updater-signal)
+        updater        (partial update! descriptors message-buffer updater-signal)
         update-thread  (Thread. updater "update-thread")]
     (server* descriptors message-buffer acceptor tcp-server update-thread updater-signal)))
 
