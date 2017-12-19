@@ -10,27 +10,31 @@
 (defn make-descriptor [id stream]
   {:id id :stream stream})
 
-(defprotocol StatefulServer
-  (start! [server-info])
-  (stop! [server-info]))
+(defn server* [descriptors message-buffer acceptor tcp-server update-thread updater-signal]
+  {:descriptors descriptors
+   :message-buffer message-buffer
+   :acceptor acceptor
+   :tcp-server tcp-server
+   :update-thread update-thread
+   :updater-signal updater-signal})
 
-(defrecord Server [descriptors message-buffer acceptor tcp-server update-thread updater-signal]
-  StatefulServer
-  (start! [{:keys [tcp-server update-thread] :as this}]
-    (.start update-thread)
-    (log/info "Update thread started.")
-    @tcp-server
-    (log/info "TCP socket server has been started.")
-    this)
-  (stop! [{:keys [tcp-server updater-signal]}]
-    (doseq [{:keys [stream]} @descriptors]
-      (s/close! stream))
-    (.close @tcp-server)
-    (log/info "TCP socket server shutdown.")
-    (reset! descriptors nil)
-    (if @(s/put! updater-signal ::shutdown)
-      (log/info "Update thread has received shutdown signal.")
-      (log/error "Failed to notify update thread of shutdown!"))))
+(defn start! [{:keys [tcp-server update-thread] :as this}]
+  (log/info "Launching update thread...")
+  (.start update-thread)
+  @tcp-server
+  (log/info "TCP socket server has been started.")
+  this)
+
+(defn stop! [{:keys [descriptors tcp-server updater-signal]}]
+  (doseq [{:keys [stream]} (vals @descriptors)]
+    (s/close! stream))
+  (.close @tcp-server)
+  (log/info "TCP socket server shutdown.")
+  (reset! descriptors nil)
+  (case @(s/try-put! updater-signal ::shutdown 5000 ::timeout)
+    true      (log/info "Update thread has received shutdown signal.")
+    ::timeout (log/error "Update thread did not acknowledge shutdown signal!")
+    false     (log/error "Failed to notify update thread of shutdown!")))
 
 (defn close! [descriptor descriptor-id info]
   (swap! descriptor dissoc descriptor-id)
@@ -62,15 +66,17 @@
 
 (defn update! [message-buffer updater-signal]
   (log/info "Update thread started.")
-  (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
-    (while (and (not= ::shutdown signal) (not (nil? signal))) 
-      (let [messages (collect! message-buffer)]
-        (doseq [{:keys [descriptor-id message] :as msg} messages]
-          ;; TODO input processing logic goes here
-          (log/debug "Message:" msg)
-          (log/info descriptor-id "says" message)))
-      ;; TODO replace with something more robust
-      (Thread/sleep 100)))
+  (while (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
+           (and (not= ::shutdown signal) (not (nil? signal))))
+    (let [messages (collect! message-buffer)]
+      (doseq [{:keys [descriptor-id message] :as msg} messages]
+        ;; TODO input processing logic goes here
+        (log/debug "Message:" msg)
+        (log/info descriptor-id "says" message)))
+    ;; TODO replace with something more robust
+    (Thread/sleep 100))
+
+  
   ;; TODO any cleanup goes here
   (log/info "Update thread finished cleaning up."))
 
@@ -86,5 +92,5 @@
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
         updater        (partial update! message-buffer updater-signal)
         update-thread  (Thread. updater "update-thread")]
-    (->Server descriptors message-buffer acceptor tcp-server update-thread updater-signal)))
+    (server* descriptors message-buffer acceptor tcp-server update-thread updater-signal)))
 
