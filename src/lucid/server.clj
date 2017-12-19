@@ -43,7 +43,6 @@
 (defn make-message [descriptor-id message]
   {:descriptor-id descriptor-id :message (util/bytes->string message)})
 
-;; TODO messages are always []. why?
 (defn accept-new-connection! [descriptors message-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [descriptor-id       (uuid/v1)
@@ -60,9 +59,7 @@
     (let [message @(s/try-take! stream nil 0 ::nothing)] 
       (if (or (nil? message) (= message ::nothing)) 
         messages
-        (do
-          (log/debug "Message was" message)
-          (recur (conj messages messages)))))))
+        (recur (conj messages message))))))
 
 (defn update! [message-buffer updater-signal]
   (log/info "Update thread started.")
@@ -72,7 +69,7 @@
       (doseq [{:keys [descriptor-id message] :as msg} messages]
         ;; TODO input processing logic goes here
         (log/debug "Message:" msg)
-        (log/info descriptor-id "says" message)))
+        (log/info descriptor-id "says" (str "\"" message "\""))))
     ;; TODO replace with something more robust
     (Thread/sleep 100))
 
