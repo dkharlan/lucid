@@ -1,10 +1,49 @@
 (ns lucid.server
   (:require [taoensso.timbre :as log]
+            [automat.core :as a]
             [clj-uuid :as uuid]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
-            [reduce-fsm :as fsm]
             [lucid.util :as util]))
+
+;; TODO move the telnet state machine to another namespace
+
+;; the first of two state machines needed will be to keep track of the telnet protocol state.
+;; for now, this is going to just ignore everything
+;;    IAC IAC -> data byte 255 (2 bytes)
+;;    IAC WILL/WONT/DO/DONT xxx -> ignore (3 bytes)
+;;    IAC SB xxx ... IAC SE -> ignore (variable) 
+;;    IAC other -> ignore -> other
+;;
+;;    IAC   = 255 = 0xFF
+;;    WILL  = 251 = 0xFB
+;;    WONT  = 252 = 0xFC
+;;    DO    = 253 = 0xFD
+;;    DON'T = 254 = 0xFE
+;;
+;; will probably eventually want to support option negotiation and subnegotiationa
+;; TODO implement UTF-8
+
+(def- any-byte (a/range -128 127))
+(def- iac (unchecked-byte 0xFF))
+(def- non-iac (a/difference any-byte iac))
+(def- assert-option (a/range (unchecked-byte 0xFB) (unchecked-byte 0xFE)))
+(def- sub-negotiation-start (unchecked-byte 0xFA))
+(def- sub-negotiation-end (unchecked-byte 0xF0))
+(def- iac-other (a/difference any-byte iac assert-option sub-negotiation-start))
+
+(def- telnet
+  (a/compile
+    (a/+
+      (a/or
+        [non-iac (a/$ :take)]
+        [iac
+         (a/or
+           [iac (a/$ :take)]
+           [assert-option any-byte]
+           [sub-negotiation-start (a/* non-iac) iac sub-negotiation-end]
+           iac-other)]))
+    {:reducers {:take #(conj %1 %2)}}))
 
 ;; TODO will also need to keep track of connection state(s)
 (defn- make-descriptor [id stream]
@@ -17,11 +56,17 @@
 (defn- make-message [descriptor-id message]
   {:descriptor-id descriptor-id :message (util/bytes->string message)})
 
+(defn insert-into! [destination transform bytes]
+  (log/debug (type bytes))
+  (->> bytes
+    (transform)
+    (s/put! destination)))
+
 (defn- accept-new-connection! [descriptors message-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [descriptor-id       (uuid/v1)
         make-message*       (partial make-message descriptor-id)
-        insert-into-buffer! #(s/put! message-buffer (make-message* %))]
+        insert-into-buffer! (partial insert-into! message-buffer make-message*)]
     (s/on-closed stream (partial close! descriptors descriptor-id info))
     (s/connect-via stream insert-into-buffer! message-buffer)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream))
@@ -84,7 +129,7 @@
   (log/info "TCP socket server shutdown.")
   (reset! descriptors nil)
   (case @(s/try-put! updater-signal ::shutdown 5000 ::timeout)
-    true      (log/info "Update thread has received shutdown signal.")
+    true      (log/info  "Update thread has received shutdown signal.")
     ::timeout (log/error "Update thread did not acknowledge shutdown signal!")
     false     (log/error "Failed to notify update thread of shutdown!")))
 
