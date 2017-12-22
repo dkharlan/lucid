@@ -24,15 +24,20 @@
 ;; will probably eventually want to support option negotiation and subnegotiationa
 ;; TODO implement UTF-8
 
-(def- any-byte (a/range -128 127))
-(def- iac (unchecked-byte 0xFF))
-(def- non-iac (a/difference any-byte iac))
-(def- assert-option (a/range (unchecked-byte 0xFB) (unchecked-byte 0xFE)))
-(def- sub-negotiation-start (unchecked-byte 0xFA))
-(def- sub-negotiation-end (unchecked-byte 0xF0))
-(def- iac-other (a/difference any-byte iac assert-option sub-negotiation-start))
+;; TODO make these private
+(def any-byte (a/range -128 127))
+(def iac (unchecked-byte 0xFF))
+(def non-iac (a/difference any-byte iac))
+(def assert-option (a/range (unchecked-byte 0xFB) (unchecked-byte 0xFE)))
+(def sub-negotiation-start (unchecked-byte 0xFA))
+(def sub-negotiation-end (unchecked-byte 0xF0))
+(def iac-other (a/difference any-byte iac assert-option sub-negotiation-start))
+(def carriage-return-byte (first (.getBytes "\r")))
+(def newline-byte (first (.getBytes "\n")))
+(def non-newline (a/difference any-byte carriage-return newline-byte))
 
-(def- telnet
+;; TODO make this private
+(def telnet
   (a/compile
     (a/+
       (a/or
@@ -43,7 +48,20 @@
            [assert-option any-byte]
            [sub-negotiation-start (a/* non-iac) iac sub-negotiation-end]
            iac-other)]))
+    {:reducers {:take #(conj %1 %2)}})) ;; TODO stare suspiciously at :take with a profiler
+
+;; TODO make this private
+;; TODO make this take as many full lines as exist
+(def line
+  (a/compile
+    [[(a/+ non-newline) (a/$ :take)] (a/? carriage-return-byte) newline-byte (a/* any-byte)]
     {:reducers {:take #(conj %1 %2)}}))
+
+;; TODO how to prevent preferential treatment of socket streams?
+;; TODO combine telnet and line efficiently to grab lines from the input buffer, put them into the
+;; TODO the fsm atom could be created in accept-new-connection! and partially applied to this -- this will prevent swap madness for descriptors atom
+(defn telnet-handler [message-bytes]
+  )
 
 ;; TODO will also need to keep track of connection state(s)
 (defn- make-descriptor [id stream]
@@ -59,7 +77,7 @@
 (defn insert-into! [destination transform bytes]
   (log/debug (type bytes))
   (->> bytes
-    (transform)
+    (transform) ;; TODO on which thread is this called? the destination's or source's?
     (s/put! destination)))
 
 (defn- accept-new-connection! [descriptors message-buffer stream info]
