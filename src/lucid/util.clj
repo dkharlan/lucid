@@ -2,6 +2,14 @@
   (:require [clojure.string :as str]
             [taoensso.timbre :as log]))
 
+(defn log-and-return!
+  ([thing]
+   (log/debug thing)
+   thing)
+  ([prefix thing]
+   (log/debug prefix thing)
+   thing))
+
 ;; TODO more info 
 (defn thread-info$ [^Thread t]
   {:pre [(not (nil? t))]}

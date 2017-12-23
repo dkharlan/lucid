@@ -1,88 +1,9 @@
-(ns lucid.server
+(ns lucid.server.core
   (:require [taoensso.timbre :as log]
-            [automat.core :as a]
             [clj-uuid :as uuid]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
-            [lucid.util :as util]))
-
-;; TODO move the telnet state machine to another namespace
-
-;; the first of two state machines needed will be to keep track of the telnet protocol state.
-;; for now, this is going to just ignore everything
-;;    IAC IAC -> data byte 255 (2 bytes)
-;;    IAC WILL/WONT/DO/DONT xxx -> ignore (3 bytes)
-;;    IAC SB xxx ... IAC SE -> ignore (variable) 
-;;    IAC other -> ignore -> other
-;;
-;;    IAC   = 255 = 0xFF
-;;    WILL  = 251 = 0xFB
-;;    WONT  = 252 = 0xFC
-;;    DO    = 253 = 0xFD
-;;    DON'T = 254 = 0xFE
-;;
-;; will probably eventually want to support option negotiation and subnegotiationa
-;; TODO implement UTF-8
-
-;; TODO make these private
-(def any-byte (a/range -128 127))
-(def iac (unchecked-byte 0xFF))
-(def non-iac (a/difference any-byte iac))
-(def assert-option (a/range (unchecked-byte 0xFB) (unchecked-byte 0xFE)))
-(def sub-negotiation-start (unchecked-byte 0xFA))
-(def sub-negotiation-end (unchecked-byte 0xF0))
-(def iac-other (a/difference any-byte iac assert-option sub-negotiation-start))
-(def carriage-return-byte (first (.getBytes "\r")))
-(def newline-byte (first (.getBytes "\n")))
-(def non-newline (a/difference any-byte carriage-return-byte newline-byte))
-
-;; TODO make this private
-(def telnet
-  (a/compile
-    (a/+
-      (a/or
-        [non-iac (a/$ :take)]
-        [iac
-         (a/or
-           [iac (a/$ :take)]
-           [assert-option any-byte]
-           [sub-negotiation-start (a/* non-iac) iac sub-negotiation-end]
-           iac-other)]))
-    {:reducers {:take #(conj %1 %2)}})) ;; TODO stare suspiciously at :take with a profiler
-
-(defn- take-char [value input]
-  (update-in value [:chars] conj input))
-
-(defn- take-str [{:keys [chars] :as value} _]
-  (let [str (-> chars (byte-array) (String. "UTF-8"))]
-    (-> value
-      (update-in [:strs] conj str)
-      (assoc :chars []))))
-
-;; TODO make this private
-(def lines
-  (a/compile
-    [[(a/+
-        [[(a/+ non-newline) (a/$ :take-char)] (a/? carriage-return-byte) newline-byte])
-      (a/$ :take-str)]
-     (a/* any-byte)]
-    {:reducers {:take-char take-char :take-str take-str}}))
-
-;; TODO how to prevent preferential treatment of socket streams?
-;; TODO combine telnet and line efficiently to grab lines from the input buffer, put them into the
-;; TODO the fsm atom could be created in accept-new-connection! and partially applied to this -- this will prevent swap madness for descriptors atom
-(defn- telnet-handler! [leftovers buffer transform message-bytes]
-  (let [{:keys [strs chars]} (->> message-bytes
-                               (concat @leftovers)
-                               (a/advance telnet [])
-                               (:value)
-                               (a/advance lines {:strs [] :chars []})
-                               (:value))]
-    (doseq [str strs]
-      (->> str
-        (transform)
-        (s/put! buffer)))
-    (reset! leftovers chars)))
+            [lucid.server.telnet :refer [telnet-handler!]]))
 
 ;; TODO will also need to keep track of connection state(s)
 (defn- make-descriptor [id stream]
@@ -162,7 +83,7 @@
   (log/info "TCP socket server shutdown.")
   (reset! descriptors nil)
   (case @(s/try-put! updater-signal ::shutdown 5000 ::timeout)
-    true      (log/info  "Update thread has received shutdown signal.")
+    true      (log/debug "Update thread has received shutdown signal.")
     ::timeout (log/error "Update thread did not acknowledge shutdown signal!")
     false     (log/error "Failed to notify update thread of shutdown!")))
 
