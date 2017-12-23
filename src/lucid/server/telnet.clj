@@ -20,7 +20,6 @@
 ;; will probably eventually want to support option negotiation and subnegotiationa
 ;; TODO implement UTF-8
 
-;; TODO make these private
 (def ^:private any-byte (a/range -128 127))
 (def ^:private iac (unchecked-byte 0xFF))
 (def ^:private non-iac (a/difference any-byte iac))
@@ -32,8 +31,7 @@
 (def ^:private newline-byte (first (.getBytes "\n")))
 (def ^:private non-newline (a/difference any-byte carriage-return-byte newline-byte))
 
-;; TODO make this private
-(def ^:private telnet
+(def ^:private telnet-fsm
   (a/compile
     (a/+
       (a/or
@@ -46,6 +44,8 @@
            iac-other)]))
     {:reducers {:take #(conj %1 %2)}})) ;; TODO stare suspiciously at :take with a profiler
 
+(def ^:private telnet (partial a/advance telnet-fsm))
+
 (defn- take-char [value input]
   (update-in value [:chars] conj input))
 
@@ -55,8 +55,8 @@
       (update-in [:strs] conj str)
       (assoc :chars []))))
 
-;; TODO make this private
-(def ^:private lines
+;; TODO needs to swallow empty lines
+(def ^:private lines-fsm
   (a/compile
     [[(a/+
         [[(a/+ non-newline) (a/$ :take-char)] (a/? carriage-return-byte) newline-byte])
@@ -64,18 +64,17 @@
      (a/* any-byte)]
     {:reducers {:take-char take-char :take-str take-str}}))
 
+(def ^:private lines (partial a/advance lines-fsm))
+
 ;; TODO how to prevent preferential treatment of socket streams? figure out which thread this is called on
-;; TODO wrap in try/catch block and log / handle errors
-;; TODO advances need to be reduces
+;; TODO think about error handling
 (defn telnet-handler! [leftovers buffer transform message-bytes]
   (try
     (let [{:keys [strs chars]} (->> message-bytes
                                  (concat @leftovers)
-                                 (vec)
-                                 (util/log-and-return!)
-                                 (a/advance telnet [])
+                                 (reduce telnet [])
                                  (:value)
-                                 (a/advance lines {:strs [] :chars []})
+                                 (reduce lines {:strs [] :chars []})
                                  (:value))]
       (doseq [str strs]
         (->> str
