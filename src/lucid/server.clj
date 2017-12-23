@@ -34,7 +34,7 @@
 (def iac-other (a/difference any-byte iac assert-option sub-negotiation-start))
 (def carriage-return-byte (first (.getBytes "\r")))
 (def newline-byte (first (.getBytes "\n")))
-(def non-newline (a/difference any-byte carriage-return newline-byte))
+(def non-newline (a/difference any-byte carriage-return-byte newline-byte))
 
 ;; TODO make this private
 (def telnet
@@ -50,18 +50,39 @@
            iac-other)]))
     {:reducers {:take #(conj %1 %2)}})) ;; TODO stare suspiciously at :take with a profiler
 
+(defn- take-char [value input]
+  (update-in value [:chars] conj input))
+
+(defn- take-str [{:keys [chars] :as value} _]
+  (let [str (-> chars (byte-array) (String. "UTF-8"))]
+    (-> value
+      (update-in [:strs] conj str)
+      (assoc :chars []))))
+
 ;; TODO make this private
-;; TODO make this take as many full lines as exist
-(def line
+(def lines
   (a/compile
-    [[(a/+ non-newline) (a/$ :take)] (a/? carriage-return-byte) newline-byte (a/* any-byte)]
-    {:reducers {:take #(conj %1 %2)}}))
+    [[(a/+
+        [[(a/+ non-newline) (a/$ :take-char)] (a/? carriage-return-byte) newline-byte])
+      (a/$ :take-str)]
+     (a/* any-byte)]
+    {:reducers {:take-char take-char :take-str take-str}}))
 
 ;; TODO how to prevent preferential treatment of socket streams?
 ;; TODO combine telnet and line efficiently to grab lines from the input buffer, put them into the
 ;; TODO the fsm atom could be created in accept-new-connection! and partially applied to this -- this will prevent swap madness for descriptors atom
-(defn telnet-handler [message-bytes]
-  )
+(defn- telnet-handler! [leftovers buffer transform message-bytes]
+  (let [{:keys [strs chars]} (->> message-bytes
+                               (concat @leftovers)
+                               (a/advance telnet [])
+                               (:value)
+                               (a/advance lines {:strs [] :chars []})
+                               (:value))]
+    (doseq [str strs]
+      (->> str
+        (transform)
+        (s/put! buffer)))
+    (reset! leftovers chars)))
 
 ;; TODO will also need to keep track of connection state(s)
 (defn- make-descriptor [id stream]
@@ -72,21 +93,15 @@
   (log/debug "Connection from" (:remote-addr info) "closed"))
 
 (defn- make-message [descriptor-id message]
-  {:descriptor-id descriptor-id :message (util/bytes->string message)})
-
-(defn insert-into! [destination transform bytes]
-  (log/debug (type bytes))
-  (->> bytes
-    (transform) ;; TODO on which thread is this called? the destination's or source's?
-    (s/put! destination)))
+  {:descriptor-id descriptor-id :message message})
 
 (defn- accept-new-connection! [descriptors message-buffer stream info]
   (log/debug "New connection initiated:" info)
-  (let [descriptor-id       (uuid/v1)
-        make-message*       (partial make-message descriptor-id)
-        insert-into-buffer! (partial insert-into! message-buffer make-message*)]
+  (let [descriptor-id    (uuid/v1)
+        make-message*    (partial make-message descriptor-id)
+        message-handler! (partial telnet-handler! (atom []) message-buffer make-message*)]
     (s/on-closed stream (partial close! descriptors descriptor-id info))
-    (s/connect-via stream insert-into-buffer! message-buffer)
+    (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream))
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
