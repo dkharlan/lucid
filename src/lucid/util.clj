@@ -2,11 +2,6 @@
   (:require [clojure.string :as str]
             [taoensso.timbre :as log]))
 
-(defn bytes->string [bytes]
-  (-> bytes
-    (String. "UTF-8")
-    (str/trim)))
-
 ;; TODO more info 
 (defn thread-info$ [^Thread t]
   {:pre [(not (nil? t))]}
