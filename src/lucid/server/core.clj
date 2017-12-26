@@ -1,10 +1,9 @@
-(ns lucid.server
+(ns lucid.server.core
   (:require [taoensso.timbre :as log]
             [clj-uuid :as uuid]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
-            [reduce-fsm :as fsm]
-            [lucid.util :as util]))
+            [lucid.server.telnet :refer [telnet-handler!]]))
 
 ;; TODO will also need to keep track of connection state(s)
 (defn- make-descriptor [id stream]
@@ -15,15 +14,15 @@
   (log/debug "Connection from" (:remote-addr info) "closed"))
 
 (defn- make-message [descriptor-id message]
-  {:descriptor-id descriptor-id :message (util/bytes->string message)})
+  {:descriptor-id descriptor-id :message message})
 
 (defn- accept-new-connection! [descriptors message-buffer stream info]
   (log/debug "New connection initiated:" info)
-  (let [descriptor-id       (uuid/v1)
-        make-message*       (partial make-message descriptor-id)
-        insert-into-buffer! #(s/put! message-buffer (make-message* %))]
+  (let [descriptor-id    (uuid/v1)
+        make-message*    (partial make-message descriptor-id)
+        message-handler! (partial telnet-handler! (atom []) message-buffer make-message*)]
     (s/on-closed stream (partial close! descriptors descriptor-id info))
-    (s/connect-via stream insert-into-buffer! message-buffer)
+    (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream))
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
@@ -84,7 +83,7 @@
   (log/info "TCP socket server shutdown.")
   (reset! descriptors nil)
   (case @(s/try-put! updater-signal ::shutdown 5000 ::timeout)
-    true      (log/info "Update thread has received shutdown signal.")
+    true      (log/debug "Update thread has received shutdown signal.")
     ::timeout (log/error "Update thread did not acknowledge shutdown signal!")
     false     (log/error "Failed to notify update thread of shutdown!")))
 

@@ -2,10 +2,13 @@
   (:require [clojure.string :as str]
             [taoensso.timbre :as log]))
 
-(defn bytes->string [bytes]
-  (-> bytes
-    (String. "UTF-8")
-    (str/trim)))
+(defn log-and-return!
+  ([thing]
+   (log/debug thing)
+   thing)
+  ([prefix thing]
+   (log/debug prefix thing)
+   thing))
 
 ;; TODO more info 
 (defn thread-info$ [^Thread t]

@@ -2,7 +2,7 @@
   :description "A flexible MUD framework written in Clojure"
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [clj-time "0.14.2"]
-                 [reduce-fsm "0.1.4"]
+                 [automat "0.2.4"]
                  [com.datomic/datomic-free "0.9.5656"
                   :exclusions [org.hornetq/hornetq-server]] ;; see netty note below
                  [org.clojure/data.codec "0.1.0"]
