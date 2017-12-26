@@ -47,21 +47,22 @@
 (def ^:private telnet (partial a/advance telnet-fsm))
 
 (defn- take-char [value input]
+  (log/debug :take-char value input)
   (update-in value [:chars] conj input))
 
 (defn- take-str [{:keys [chars] :as value} _]
+  (log/debug :take-str value _)
   (let [str (-> chars (byte-array) (String. "UTF-8"))]
     (-> value
       (update-in [:strs] conj str)
       (assoc :chars []))))
 
-;; TODO needs to swallow empty lines
 (def ^:private lines-fsm
   (a/compile
-    [[(a/+
-        [[(a/+ non-newline) (a/$ :take-char)] (a/? carriage-return-byte) newline-byte])
-      (a/$ :take-str)]
-     (a/* any-byte)]
+    (a/+
+      (a/or
+        [[[(a/+ non-newline) (a/$ :take-char)] (a/? carriage-return-byte) newline-byte] (a/$ :take-str)]
+        [[(a/? carriage-return-byte) newline-byte] (a/$ :take-str)]))
     {:reducers {:take-char take-char :take-str take-str}}))
 
 (def ^:private lines (partial a/advance lines-fsm))
