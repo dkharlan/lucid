@@ -3,7 +3,7 @@
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [clj-time "0.14.2"]
                  [automat "0.2.4"]
-                 [com.datomic/clj-client "0.8.606"]
+                 [com.datomic/datomic-pro "0.9.5656"]
                  [org.clojure/core.async "0.3.465"]
                  [org.clojure/data.codec "0.1.0"]
                  [buddy/buddy-hashers "1.0.0"]
