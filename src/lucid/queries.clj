@@ -9,9 +9,9 @@
   (-> (get-connection) (d/db)))
 
 (defn character-exists? [character-name]
-  (-> (d/q '[:find ?e
+  (-> (d/q '[:find ?character-name
              :in $ ?character-name
-             :where [?e :character/name ?character-name]]
+             :where [_ :character/name ?character-name]]
         (get-db)
         character-name)
     (not-empty)
@@ -25,9 +25,8 @@
     (first)
     (first)))
 
-(defn create-character! [character-name password-hash-and-salt]
-  @(d/transact (get-connection)
-     [{:db/id (d/tempid :db.part/user)
-       :character/name character-name
-       :character/password-hash-and-salt password-hash-and-salt}]))
+(defn create-character [character-name password-hash-and-salt]
+  {:db/id (d/tempid :db.part/user)
+   :character/name character-name
+   :character/password-hash-and-salt password-hash-and-salt})
 

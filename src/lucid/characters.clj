@@ -11,7 +11,8 @@
   (let [{:keys [character/password-hash-and-salt]} (q/get-character character-name)]
     (hash/check offered-password password-hash-and-salt)))
 
-(defn create-character! [{:keys [character-name initial-password]}]
-  (let [password-hash-and-salt (hash/derive initial-password)]
-    (q/create-character! character-name password-hash-and-salt)))
+(defn create-character [{:keys [character-name initial-password]}]
+  (q/create-character
+    character-name
+    (hash/derive initial-password)))
 
