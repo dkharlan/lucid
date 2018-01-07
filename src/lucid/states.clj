@@ -85,20 +85,20 @@
     [_]                                        -> :initial]
    [:awaiting-name
     [[_ character-name-regex] :guard chars/character-exists?] -> {:action add-existing-character-name} :awaiting-password
-    [[_ character-name-regex]] -> {:action add-new-character-name} :awaiting-initial-password
-    [_] -> {:action print-name-rules} :awaiting-name]
+    [[_ character-name-regex]]                                -> {:action add-new-character-name} :awaiting-initial-password
+    [_]                                                       -> {:action print-name-rules} :awaiting-name]
    [:awaiting-password
     [_ :guard chars/password-is-valid?] -> {:action print-login-message} :logged-in
-    [_] -> {:action print-invalid-password} :zombie]
+    [_]                                 -> {:action print-invalid-password} :zombie]
    [:awaiting-initial-password
- 6   [[_ password-regex]] -> {:action add-initial-password} :awaiting-password-confirmation
-    [_] -> {:action print-password-rules} :awaiting-initial-password]
+    [[_ password-regex]] -> {:action add-initial-password} :awaiting-password-confirmation
+    [_]                  -> {:action print-password-rules} :awaiting-initial-password]
    [:awaiting-password-confirmation
     [[_ password-regex] :guard password-matches-initial?] -> {:action log-character-in} :logged-in
-    [_] -> {:action print-goodbye} :zombie]
+    [_]                                                   -> {:action print-goodbye} :zombie]
    [:logged-in
     [[_ "quit"]] -> {:action print-goodbye} :zombie
-    [_] -> :logged-in]
+    [_]          -> :logged-in]
    [:zombie
     [_] -> :zombie]]
   :default-acc {:side-effects {:stream [] :db []}}
