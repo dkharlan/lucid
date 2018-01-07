@@ -68,7 +68,7 @@
       (send-to-self (str "Thanks for creating your character, " character-name "!"))
       (queue-txn (chars/create-character character-name password)))))
 
-(defn log-in-websocket-character [accumulator [_ character-name] & _]
+(defn log-in-websocket-character [accumulator {:keys [character-name]} & _]
   (assoc-in accumulator [:login :character-name] character-name))
 
 (defn print-goodbye [accumulator & _]
@@ -80,9 +80,9 @@
 ;; Subsequent values are input lines from the player
 (defsm-inc game
   [[:initial
-    [[_ :telnet]]        -> :awaiting-name
-    [[_ [:websocket _]]] -> {:action log-in-websocket-character} :logged-in
-    [_]                  -> :initial]
+    [[_ {:type :telnet}]]                      -> :awaiting-name
+    [[_ {:type :websocket :character-name _}]] -> {:action log-in-websocket-character} :logged-in
+    [_]                                        -> :initial]
    [:awaiting-name
     [[_ character-name-regex] :guard chars/character-exists?] -> {:action add-existing-character-name} :awaiting-password
     [[_ character-name-regex]] -> {:action add-new-character-name} :awaiting-initial-password
