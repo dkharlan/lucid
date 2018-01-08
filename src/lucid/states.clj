@@ -1,6 +1,7 @@
 (ns lucid.states
   (:require [reduce-fsm :refer [defsm-inc] :as fsm]
-            [lucid.characters :as chars]))
+            [lucid.characters :as chars]
+            [taoensso.timbre :as log]))
 
 (def character-name-regex #"^[A-z]{3,}$")
 (def password-regex #"^[A-Za-z\d]{8,}$")
@@ -20,7 +21,7 @@
 ;;    :output for output to streams
 ;;
 
-(defn password-matches-initial? [[{{:keys [initial-password]} :login :as accum} password]]
+(defn password-matches-initial? [[{{:keys [initial-password]} :login :as accum} {password :message}]]
   (= password initial-password))
 
 ;;; actions
@@ -38,19 +39,19 @@
 (defn- queue-txn [accumulator txn]
   (update-in accumulator [:side-effects :db] conj txn))
 
-(defn add-new-character-name [accumulator input & _]
+(defn add-new-character-name [accumulator {character-name :message} & _]
   (-> accumulator
-    (add-character-name input)
+    (add-character-name character-name)
     (send-to-self "Hello! I don't recognize you.  Please enter a new password.")))
 
-(defn add-existing-character-name [accumulator input & _]
+(defn add-existing-character-name [accumulator {character-name :message} & _]
   (-> accumulator
-    (add-character-name input)
-    (send-to-self (str "Welcome back, " input ". Please enter your password."))))
+    (add-character-name character-name)
+    (send-to-self (str "Welcome back, " character-name ". Please enter your password."))))
 
-(defn add-initial-password [accumulator input & _]
+(defn add-initial-password [accumulator {password :message} & _]
   (-> accumulator
-    (assoc-in [:login :initial-password] input)
+    (assoc-in [:login :initial-password] password)
     (send-to-self "Please confirm your password.")))
 
 (defn print-name-rules [accumulator & _]
@@ -66,6 +67,7 @@
   (send-to-self accumulator "Welcome!"))
 
 (defn log-character-in [accumulator & _]
+  (log/debug accumulator)
   (let [{character-name :character-name password :initial-password} (:login accumulator)]
     (-> accumulator
       (update-in [:login] dissoc :initial-password)
@@ -94,6 +96,13 @@
                     message
                     "\"\n")}))))
 
+(defn character-exists? [[_ {character-name :message}]]
+  (log/debug character-name)
+  (chars/character-exists? character-name))
+
+(defn password-is-valid? [[{{:keys [character-name]} :login} {password :message}]]
+  (chars/password-is-valid? character-name password))
+
 ;; The first value should be one of:
 ;;    :telnet             for a telnet connection
 ;;    [:websocket name]   for a websocket connection for name
@@ -104,18 +113,18 @@
     [[_ {:type :websocket :descriptor-id _ :character-name _}]] -> {:action log-in-websocket-character} :logged-in
     [_]                                                         -> :initial]
    [:awaiting-name
-    [[_ character-name-regex] :guard chars/character-exists?] -> {:action add-existing-character-name} :awaiting-password
-    [[_ character-name-regex]]                                -> {:action add-new-character-name} :awaiting-initial-password
-    [_]                                                       -> {:action print-name-rules} :awaiting-name]
+    [[_ {:descriptors _ :message character-name-regex}] :guard character-exists?] -> {:action add-existing-character-name} :awaiting-password
+    [[_ {:descriptors _ :message character-name-regex}]]                          -> {:action add-new-character-name} :awaiting-initial-password
+    [_]                                                                           -> {:action print-name-rules} :awaiting-name]
    [:awaiting-password
-    [_ :guard chars/password-is-valid?] -> {:action print-login-message} :logged-in
-    [_]                                 -> {:action print-invalid-password} :zombie]
+    [_ :guard password-is-valid?] -> {:action print-login-message} :logged-in
+    [_]                           -> {:action print-invalid-password} :zombie]
    [:awaiting-initial-password
-    [[_ password-regex]] -> {:action add-initial-password} :awaiting-password-confirmation
-    [_]                  -> {:action print-password-rules} :awaiting-initial-password]
+    [[_ {:descriptors _ :message password-regex}]] -> {:action add-initial-password} :awaiting-password-confirmation
+    [_]                                            -> {:action print-password-rules} :awaiting-initial-password]
    [:awaiting-password-confirmation
-    [[_ password-regex] :guard password-matches-initial?] -> {:action log-character-in} :logged-in
-    [_]                                                   -> {:action print-goodbye} :zombie]
+    [[_ {:descriptors _ :message password-regex}] :guard password-matches-initial?] -> {:action log-character-in} :logged-in
+    [_]                                                                             -> {:action print-goodbye} :zombie]
    [:logged-in
     [[_ {:descriptors _ :message "quit"}]] -> {:action print-goodbye} :zombie
     [_]                                    -> {:action echo-message} :logged-in]
