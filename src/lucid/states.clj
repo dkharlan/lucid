@@ -72,22 +72,27 @@
       (send-to-self (str "Thanks for creating your character, " character-name "!"))
       (queue-txn (chars/create-character character-name password)))))
 
-(defn log-in-websocket-character [accumulator {:keys [character-name]} & _]
-  (assoc-in accumulator [:login :character-name] character-name))
+(defn add-descriptor-id [accumulator {:keys [descriptor-id]} & _]
+  (assoc-in accumulator [:login :descriptor-id] descriptor-id))
+
+(defn log-in-websocket-character [accumulator {:keys [character-name] :as input-params} & _]
+  (-> accumulator
+    (assoc-in [:login :character-name] character-name)
+    (add-descriptor-id input-params)))
 
 (defn print-goodbye [accumulator & _]
   (send-to-self accumulator "Goodbye."))
 
-(defn echo-message [accumulator {:keys [self descriptors message]}]
-  (loop [acc accumulator
-         descs (keys descriptors)]
-    (if (empty? descs)
-      acc
-      (let [[next & rest] descs
-            dest-name (if (= self next) "You" next)]
-        (recur
-          (send-to-desc acc next (str dest-name " said: " message))
-          rest)))))
+(defn echo-message [accumulator {:keys [descriptors message]} & _]
+  (let [self (get-in accumulator [:login :descriptor-id])]
+    (update-in accumulator [:side-effects :stream] concat
+      (for [desc (keys descriptors)]
+        {:destination desc
+         :message (str
+                    (if (= desc self) "You" self)
+                    " said \""
+                    message
+                    "\"\n")}))))
 
 ;; The first value should be one of:
 ;;    :telnet             for a telnet connection
@@ -95,7 +100,7 @@
 ;; Subsequent values are input lines from the player
 (defsm-inc game
   [[:initial
-    [[_ {:type :telnet :descriptor-id _}]]                      -> :awaiting-name
+    [[_ {:type :telnet :descriptor-id _}]]                      -> {:action add-descriptor-id} :awaiting-name
     [[_ {:type :websocket :descriptor-id _ :character-name _}]] -> {:action log-in-websocket-character} :logged-in
     [_]                                                         -> :initial]
    [:awaiting-name
