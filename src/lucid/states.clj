@@ -28,8 +28,12 @@
 (defn- add-character-name [accumulator input & _]
   (assoc-in accumulator [:login :character-name] input))
 
+(defn- send-to-desc [accumulator desc message]
+  (update-in accumulator [:side-effects :stream] conj {:destination desc :message message}))
+
 (defn- send-to-self [accumulator message]
-  (update-in accumulator [:side-effects :stream] conj message))
+  (let [self (get-in accumulator [:login :descriptor-id])]
+    (send-to-desc accumulator self message)))
 
 (defn- queue-txn [accumulator txn]
   (update-in accumulator [:side-effects :db] conj txn))
@@ -74,15 +78,26 @@
 (defn print-goodbye [accumulator & _]
   (send-to-self accumulator "Goodbye."))
 
+(defn echo-message [accumulator {:keys [self descriptors message]}]
+  (loop [acc accumulator
+         descs (keys descriptors)]
+    (if (empty? descs)
+      acc
+      (let [[next & rest] descs
+            dest-name (if (= self next) "You" next)]
+        (recur
+          (send-to-desc acc next (str dest-name " said: " message))
+          rest)))))
+
 ;; The first value should be one of:
 ;;    :telnet             for a telnet connection
 ;;    [:websocket name]   for a websocket connection for name
 ;; Subsequent values are input lines from the player
 (defsm-inc game
   [[:initial
-    [[_ {:type :telnet}]]                      -> :awaiting-name
-    [[_ {:type :websocket :character-name _}]] -> {:action log-in-websocket-character} :logged-in
-    [_]                                        -> :initial]
+    [[_ {:type :telnet :descriptor-id _}]]                      -> :awaiting-name
+    [[_ {:type :websocket :descriptor-id _ :character-name _}]] -> {:action log-in-websocket-character} :logged-in
+    [_]                                                         -> :initial]
    [:awaiting-name
     [[_ character-name-regex] :guard chars/character-exists?] -> {:action add-existing-character-name} :awaiting-password
     [[_ character-name-regex]]                                -> {:action add-new-character-name} :awaiting-initial-password
@@ -97,8 +112,8 @@
     [[_ password-regex] :guard password-matches-initial?] -> {:action log-character-in} :logged-in
     [_]                                                   -> {:action print-goodbye} :zombie]
    [:logged-in
-    [[_ "quit"]] -> {:action print-goodbye} :zombie
-    [_]          -> :logged-in]
+    [[_ {:descriptors _ :message "quit"}]] -> {:action print-goodbye} :zombie
+    [_]                                            -> {:action echo-message} :logged-in]
    [:zombie
     [_] -> :zombie]]
   :default-acc {:side-effects {:stream [] :db []}}
