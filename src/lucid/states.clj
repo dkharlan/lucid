@@ -118,7 +118,7 @@
     [_]                                                   -> {:action print-goodbye} :zombie]
    [:logged-in
     [[_ {:descriptors _ :message "quit"}]] -> {:action print-goodbye} :zombie
-    [_]                                            -> {:action echo-message} :logged-in]
+    [_]                                    -> {:action echo-message} :logged-in]
    [:zombie
     [_] -> :zombie]]
   :default-acc {:side-effects {:stream [] :db []}}
