@@ -83,12 +83,12 @@
             (log/debug "Transacting" db-transactions))
           @(db/transact db-connection db-transactions)
 
-          ;; TODO clean up connections in the :zombie state
-
           (swap! states assoc descriptor-id
             (-> next-state
               (assoc-in [:value :side-effects :db] [])
-              (assoc-in [:value :side-effects :stream] []))))))
+              (assoc-in [:value :side-effects :stream] [])))
+          (if (= (:state next-state) :zombie)
+            (s/close! (get-in descriptors* [descriptor-id :stream]))))))
 
     (Thread/sleep 100)) ;; TODO replace Thread/sleep with something more robust
   ;; TODO any cleanup goes here
