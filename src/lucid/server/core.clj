@@ -3,7 +3,9 @@
             [clj-uuid :as uuid]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
-            [lucid.server.telnet :refer [telnet-handler!]]))
+            [reduce-fsm :as fsm]
+            [lucid.server.telnet :refer [telnet-handler!]]
+            [lucid.states :as st]))
 
 ;; TODO will also need to keep track of connection state(s)
 (defn- make-descriptor [id stream]
@@ -16,14 +18,20 @@
 (defn- make-message [descriptor-id message]
   {:descriptor-id descriptor-id :message message})
 
-(defn- accept-new-connection! [descriptors message-buffer stream info]
+(defn- accept-new-connection! [descriptors states message-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [descriptor-id    (uuid/v1)
         make-message*    (partial make-message descriptor-id)
-        message-handler! (partial telnet-handler! (atom []) message-buffer make-message*)]
+        message-handler! (partial telnet-handler!
+                           (atom []) ;; TODO may want to keep track of the leftovers atom someday
+                           message-buffer
+                           make-message*)
+        game             (st/game)]
     (s/on-closed stream (partial close! descriptors descriptor-id info))
     (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream))
+    (swap! states assoc descriptor-id
+      (fsm/fsm-event game {:type :telnet :descriptor-id descriptor-id}))
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
@@ -34,7 +42,7 @@
         messages
         (recur (conj messages message))))))
 
-(defn- update! [descriptors message-buffer updater-signal]
+(defn- update! [descriptors states message-buffer updater-signal]
   (log/info "Update thread started.")
   (while (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
            (and (not= ::shutdown signal) (not (nil? signal))))
@@ -51,23 +59,25 @@
   ;; TODO any cleanup goes here
   (log/info "Update thread finished cleaning up."))
 
-(defn- server* [descriptors message-buffer acceptor tcp-server update-thread updater-signal]
-  {:descriptors descriptors
+(defn- server* [descriptors states message-buffer acceptor tcp-server update-thread updater-signal]
+  {:descriptors    descriptors
+   :states         states
    :message-buffer message-buffer
-   :acceptor acceptor
-   :tcp-server tcp-server
-   :update-thread update-thread
+   :acceptor       acceptor
+   :tcp-server     tcp-server
+   :update-thread  update-thread
    :updater-signal updater-signal})
 
 (defn make-server [port]
   (let [descriptors    (atom {})
+        states         (atom {})
         message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
-        acceptor       (partial accept-new-connection! descriptors message-buffer)
+        acceptor       (partial accept-new-connection! descriptors states message-buffer)
         tcp-server     (delay (tcp/start-server acceptor {:port port}))
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
-        updater        (partial update! descriptors message-buffer updater-signal)
+        updater        (partial update! descriptors states message-buffer updater-signal)
         update-thread  (Thread. updater "update-thread")]
-    (server* descriptors message-buffer acceptor tcp-server update-thread updater-signal)))
+    (server* descriptors states message-buffer acceptor tcp-server update-thread updater-signal)))
 
 (defn start! [{:keys [tcp-server update-thread] :as this}]
   (log/info "Launching update thread...")
