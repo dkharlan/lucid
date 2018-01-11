@@ -56,9 +56,11 @@
         (log/debug "Message:" msg)
         (log/info descriptor-id "says" (str "\"" message "\""))
 
-        (let [state               (get @states descriptor-id)
-              descriptors         @descriptors
-              input               {:descriptors descriptors :message message}
+        (let [states*             @states
+              descriptors*        @descriptors
+              state               (get states* descriptor-id)
+              input               {:server-info {:descriptors descriptors* :states states*} ;; TODO should this be the full server info structure?
+                                   :message message}
               next-state          (fsm/fsm-event state input)
               db-transactions     (get-in next-state [:value :side-effects :db])
               stream-side-effects (get-in next-state [:value :side-effects :stream])]
@@ -73,13 +75,15 @@
             ;; TODO remove me
             (log/debug "Sending" (count stream-side-effects) "messages"))
           (doseq [{:keys [destination message]} stream-side-effects]
-            (let [destination-stream (get-in descriptors [destination :stream])]
+            (let [destination-stream (get-in descriptors* [destination :stream])]
               (s/put! destination-stream  message)))
 
           (if (not (empty? db-transactions))
             ;; TODO remove me
             (log/debug "Transacting" db-transactions))
           @(db/transact db-connection db-transactions)
+
+          ;; TODO clean up connections in the :zombie state
 
           (swap! states assoc descriptor-id
             (-> next-state

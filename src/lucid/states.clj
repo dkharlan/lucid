@@ -91,13 +91,17 @@
 (defn print-goodbye [accumulator & _]
   (sendln-to-self accumulator "Goodbye."))
 
-(defn echo-message [accumulator {:keys [descriptors message]} & _]
-  (let [self (get-in accumulator [:login :descriptor-id])]
+(defn echo-message [accumulator {:keys [server-info message]} & _]
+  (let [{:keys [descriptors states]} server-info
+        source-descriptor-id         (get-in accumulator [:login :descriptor-id])
+        source-name                  (or
+                                        (get-in states [source-descriptor-id :value :login :character-name])
+                                        source-descriptor-id)]
     (update-in accumulator [:side-effects :stream] concat
-      (for [desc (keys descriptors)]
-        {:destination desc
+      (for [destination-descriptor-id (keys descriptors)]
+        {:destination destination-descriptor-id 
          :message (str
-                    (if (= desc self) "You" self)
+                    (if (= destination-descriptor-id source-descriptor-id) "You" source-name)
                     " said \""
                     message
                     "\"\n")}))))
@@ -119,20 +123,20 @@
     [[_ {:type :websocket :descriptor-id _ :character-name _}]] -> {:action log-in-websocket-character} :logged-in
     [_]                                                         -> :initial]
    [:awaiting-name
-    [[_ {:descriptors _ :message character-name-regex}] :guard character-exists?] -> {:action add-existing-character-name} :awaiting-password
-    [[_ {:descriptors _ :message character-name-regex}]]                          -> {:action add-new-character-name} :awaiting-initial-password
+    [[_ {:server-info _ :message character-name-regex}] :guard character-exists?] -> {:action add-existing-character-name} :awaiting-password
+    [[_ {:server-info _ :message character-name-regex}]]                          -> {:action add-new-character-name} :awaiting-initial-password
     [_]                                                                           -> {:action print-name-rules} :awaiting-name]
    [:awaiting-password
     [_ :guard password-is-valid?] -> {:action print-login-message} :logged-in
     [_]                           -> {:action print-invalid-password} :zombie]
    [:awaiting-initial-password
-    [[_ {:descriptors _ :message password-regex}]] -> {:action add-initial-password} :awaiting-password-confirmation
+    [[_ {:server-info _ :message password-regex}]] -> {:action add-initial-password} :awaiting-password-confirmation
     [_]                                            -> {:action print-password-rules} :awaiting-initial-password]
    [:awaiting-password-confirmation
-    [[_ {:descriptors _ :message password-regex}] :guard password-matches-initial?] -> {:action log-character-in} :logged-in
+    [[_ {:server-info _ :message password-regex}] :guard password-matches-initial?] -> {:action log-character-in} :logged-in
     [_]                                                                             -> {:action print-goodbye} :zombie]
    [:logged-in
-    [[_ {:descriptors _ :message "quit"}]] -> {:action print-goodbye} :zombie
+    [[_ {:server-info _ :message "quit"}]] -> {:action print-goodbye} :zombie
     [_]                                    -> {:action echo-message} :logged-in]
    [:zombie
     [_] -> :zombie]]
