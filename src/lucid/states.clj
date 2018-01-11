@@ -32,9 +32,15 @@
 (defn- send-to-desc [accumulator desc message]
   (update-in accumulator [:side-effects :stream] conj {:destination desc :message message}))
 
+(defn- sendln-to-desc [accumulator desc message]
+  (send-to-desc accumulator desc (str message "\n")))
+
 (defn- send-to-self [accumulator message]
   (let [self (get-in accumulator [:login :descriptor-id])]
     (send-to-desc accumulator self message)))
+
+(defn- sendln-to-self [accumulator message]
+  (send-to-self accumulator (str message "\n")))
 
 (defn- queue-txn [accumulator txn]
   (update-in accumulator [:side-effects :db] conj txn))
@@ -42,36 +48,36 @@
 (defn add-new-character-name [accumulator {character-name :message} & _]
   (-> accumulator
     (add-character-name character-name)
-    (send-to-self "Hello! I don't recognize you.  Please enter a new password.")))
+    (sendln-to-self "Hello! I don't recognize you.  Please enter a new password.")))
 
 (defn add-existing-character-name [accumulator {character-name :message} & _]
   (-> accumulator
     (add-character-name character-name)
-    (send-to-self (str "Welcome back, " character-name ". Please enter your password."))))
+    (sendln-to-self (str "Welcome back, " character-name ". Please enter your password."))))
 
 (defn add-initial-password [accumulator {password :message} & _]
   (-> accumulator
     (assoc-in [:login :initial-password] password)
-    (send-to-self "Please confirm your password.")))
+    (sendln-to-self "Please confirm your password.")))
 
 (defn print-name-rules [accumulator & _]
-  (send-to-self accumulator "Character names must be alphabetical characters only and must be at least three letters."))
+  (sendln-to-self accumulator "Character names must be alphabetical characters only and must be at least three letters."))
 
 (defn print-password-rules [accumulator & _]
-  (send-to-self accumulator "Passwords must be alphanumeric and at least 8 characters long."))
+  (sendln-to-self accumulator "Passwords must be alphanumeric and at least 8 characters long."))
 
 (defn print-invalid-password [accumulator & _]
-  (send-to-self accumulator "Incorrect password. Goodbye."))
+  (sendln-to-self accumulator "Incorrect password. Goodbye."))
 
 (defn print-login-message [accumulator & _]
-  (send-to-self accumulator "Welcome!"))
+  (sendln-to-self accumulator "Welcome!"))
 
 (defn log-character-in [accumulator & _]
   (log/debug accumulator)
   (let [{character-name :character-name password :initial-password} (:login accumulator)]
     (-> accumulator
       (update-in [:login] dissoc :initial-password)
-      (send-to-self (str "Thanks for creating your character, " character-name "!"))
+      (sendln-to-self (str "Thanks for creating your character, " character-name "!"))
       (queue-txn (chars/create-character character-name password)))))
 
 (defn add-descriptor-id [accumulator {:keys [descriptor-id]} & _]
@@ -83,7 +89,7 @@
     (add-descriptor-id input-params)))
 
 (defn print-goodbye [accumulator & _]
-  (send-to-self accumulator "Goodbye."))
+  (sendln-to-self accumulator "Goodbye."))
 
 (defn echo-message [accumulator {:keys [descriptors message]} & _]
   (let [self (get-in accumulator [:login :descriptor-id])]

@@ -4,15 +4,19 @@
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
             [reduce-fsm :as fsm]
+            [datomic.api :as db]
             [lucid.server.telnet :refer [telnet-handler!]]
-            [lucid.states :as st]))
+            [lucid.states :as st]
+            [lucid.database :as ldb]
+            [datomic.api :as d]))
 
 ;; TODO will also need to keep track of connection state(s)
 (defn- make-descriptor [id stream]
   {:id id :stream stream})
 
-(defn- close! [descriptor descriptor-id info]
-  (swap! descriptor dissoc descriptor-id)
+(defn- close! [descriptors states descriptor-id info]
+  (swap! descriptors dissoc descriptor-id)
+  (swap! states dissoc descriptor-id)
   (log/debug "Connection from" (:remote-addr info) "closed"))
 
 (defn- make-message [descriptor-id message]
@@ -42,7 +46,7 @@
         messages
         (recur (conj messages message))))))
 
-(defn- update! [descriptors states message-buffer updater-signal]
+(defn- update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
   (while (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
            (and (not= ::shutdown signal) (not (nil? signal))))
@@ -51,10 +55,37 @@
         ;; TODO input processing logic goes here
         (log/debug "Message:" msg)
         (log/info descriptor-id "says" (str "\"" message "\""))
-        (doseq [{:keys [id stream]} (vals @descriptors)]
-          (when (not= id descriptor-id)
-            (log/debug "Sending to" id)
-            (s/put! stream (str descriptor-id " says " (str "\"" message "\"") "\n"))))))
+
+        (let [state               (get @states descriptor-id)
+              descriptors         @descriptors
+              input               {:descriptors descriptors :message message}
+              next-state          (fsm/fsm-event state input)
+              db-transactions     (get-in next-state [:value :side-effects :db])
+              stream-side-effects (get-in next-state [:value :side-effects :stream])]
+
+          ;;(log/debug "Txns:" db-transactions)
+          ;;(log/debug "Stream msgs:" stream-side-effects)
+          ;;(log/debug "Descs:" descriptors)
+          (log/debug "Before:" state)
+          (log/debug "After:" next-state)
+
+          (if (not (empty? stream-side-effects))
+            ;; TODO remove me
+            (log/debug "Sending" (count stream-side-effects) "messages"))
+          (doseq [{:keys [destination message]} stream-side-effects]
+            (let [destination-stream (get-in descriptors [destination :stream])]
+              (s/put! destination-stream  message)))
+
+          (if (not (empty? db-transactions))
+            ;; TODO remove me
+            (log/debug "Transacting" db-transactions))
+          @(db/transact db-connection db-transactions)
+
+          (swap! states assoc descriptor-id
+            (-> next-state
+              (assoc-in [:value :side-effects :db] [])
+              (assoc-in [:value :side-effects :stream] []))))))
+
     (Thread/sleep 100)) ;; TODO replace Thread/sleep with something more robust
   ;; TODO any cleanup goes here
   (log/info "Update thread finished cleaning up."))
@@ -68,14 +99,15 @@
    :update-thread  update-thread
    :updater-signal updater-signal})
 
-(defn make-server [port]
+(defn make-server [port db-uri]
   (let [descriptors    (atom {})
         states         (atom {})
         message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
         acceptor       (partial accept-new-connection! descriptors states message-buffer)
         tcp-server     (delay (tcp/start-server acceptor {:port port}))
+        db-connection  (db/connect db-uri)
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
-        updater        (partial update! descriptors states message-buffer updater-signal)
+        updater        (partial update! descriptors states db-connection message-buffer updater-signal)
         update-thread  (Thread. updater "update-thread")]
     (server* descriptors states message-buffer acceptor tcp-server update-thread updater-signal)))
 
