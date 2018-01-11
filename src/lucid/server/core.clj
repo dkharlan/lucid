@@ -31,7 +31,7 @@
                            message-buffer
                            make-message*)
         game             (st/game)]
-    (s/on-closed stream (partial close! descriptors descriptor-id info))
+    (s/on-closed stream (partial close! descriptors states descriptor-id info))
     (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream))
     (swap! states assoc descriptor-id
