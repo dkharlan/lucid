@@ -13,6 +13,7 @@
 (defn- make-descriptor [id stream info]
   {:id id :stream stream :info info})
 
+;; TODO think about how to manage state when connection goes linkdead (as opposed to a character logging out)
 (defn- close! [descriptors states descriptor-id info]
   (swap! descriptors dissoc descriptor-id)
   (swap! states dissoc descriptor-id)
@@ -88,8 +89,9 @@
               (assoc-in [:value :side-effects :db] [])
               (assoc-in [:value :side-effects :stream] [])
               (assoc-in [:value :side-effects :log] [])))
-          (if (= (:state next-state) :zombie)
-            ;; TODO log character name if descriptor has one
+          (when (= (:state next-state) :zombie)
+            (if-let [character-name (get-in next-state [:value :login :character-name])]
+              (log/info "Logging" (str "\"" character-name "\"") "out"))
             (s/close! (get-in descriptors* [descriptor-id :stream]))))))
     (Thread/sleep 100)) ;; TODO replace Thread/sleep with something more robust
   ;; TODO any cleanup goes here
