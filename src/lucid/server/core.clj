@@ -58,8 +58,8 @@
         (let [states*                       @states
               descriptors*                  @descriptors
               state                         (get states* descriptor-id)
-              ;; TODO should this be the full server info structure?
-              input                         {:server-info {:descriptors descriptors* :states states*}
+              input                         {;; TODO should this be the full server info structure?
+                                             :server-info {:descriptors descriptors* :states states*}
                                              :message message}
               next-state                    (fsm/fsm-event state input)
               {db-transactions     :db
