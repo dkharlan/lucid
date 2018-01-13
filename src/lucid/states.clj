@@ -21,7 +21,7 @@
 ;;    :output for output to streams
 ;;
 
-(defn password-matches-initial? [[{{:keys [initial-password]} :login :as accum} {password :message}]]
+(defn password-matches-initial? [[{{:keys [initial-password]} :login} {password :message}]]
   (= password initial-password))
 
 ;;; actions
