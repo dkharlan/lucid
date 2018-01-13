@@ -7,15 +7,14 @@
             [lucid.characters :as ch]
             [datomic.api :as db]))
 
-(log/merge-config!
-  {:appenders
-   {:println
-    {:output-fn util/logger-output-with-thread}}})
-
-(ldb/reset! ldb/uri)
-(def conn (q/get-connection))
+;; TODO move this to -main
+;; (log/merge-config!
+;;   {:appenders
+;;    {:println
+;;     {:output-fn util/logger-output-with-thread}}})
 
 (defn -main
-  "I don't do a whole lot ... yet."
-  [& args]
-  (println "Hello, World!"))
+  [& _]
+  (throw
+    (RuntimeException. "Starting Lucid as a JAR has not yet been implemented.")))
+

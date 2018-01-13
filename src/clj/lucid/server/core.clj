@@ -47,6 +47,7 @@
         (recur (conj messages message))))))
 
 ;; TODO refactor for brevity / style
+;; TODO catch and handle exceptions so they don't kill the update thread
 (defn- update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
   (while (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
