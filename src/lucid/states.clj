@@ -73,7 +73,6 @@
   (sendln-to-self accumulator "Welcome!"))
 
 (defn log-character-in [accumulator & _]
-  (log/debug accumulator)
   (let [{character-name :character-name password :initial-password} (:login accumulator)]
     (-> accumulator
       (update-in [:login] dissoc :initial-password)
@@ -107,7 +106,6 @@
                     "\"\n")}))))
 
 (defn character-exists? [[_ {character-name :message}]]
-  (log/debug character-name)
   (chars/character-exists? character-name))
 
 (defn password-is-valid? [[{{:keys [character-name]} :login} {password :message}]]

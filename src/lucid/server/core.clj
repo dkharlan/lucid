@@ -17,7 +17,7 @@
 (defn- close! [descriptors states descriptor-id info]
   (swap! descriptors dissoc descriptor-id)
   (swap! states dissoc descriptor-id)
-  (log/debug "Connection from" (:remote-addr info) "closed"))
+  (log/info "Connection from" (:remote-addr info) "closed"))
 
 (defn- make-message [descriptor-id message]
   {:descriptor-id descriptor-id :message message})
@@ -52,10 +52,8 @@
            (and (not= ::shutdown signal) (not (nil? signal))))
     (let [messages (collect! message-buffer)]
       (doseq [{:keys [descriptor-id message] :as msg} messages]
-        ;; TODO input processing logic goes here
-        (log/debug "Message:" msg)
-        (log/info descriptor-id "says" (str "\"" message "\""))
-
+        ;;(log/debug "Message:" msg)
+        ;;(log/info descriptor-id "says" (str "\"" message "\""))
         (let [states*             @states
               descriptors*        @descriptors
               state               (get states* descriptor-id)
@@ -64,32 +62,24 @@
               next-state          (fsm/fsm-event state input)
               db-transactions     (get-in next-state [:value :side-effects :db])
               stream-side-effects (get-in next-state [:value :side-effects :stream])]
-
-          ;;(log/debug "Txns:" db-transactions)
-          ;;(log/debug "Stream msgs:" stream-side-effects)
-          ;;(log/debug "Descs:" descriptors)
-          (log/debug "Before:" state)
-          (log/debug "After:" next-state)
-
+          (log/trace "Previous state:" state)
+          (log/trace "Next state:" next-state)
+          (log/trace "Transactions:" db-transactions)
+          (log/trace "Stream messages:" stream-side-effects)
           (if (not (empty? stream-side-effects))
-            ;; TODO remove me
-            (log/debug "Sending" (count stream-side-effects) "messages"))
+            (log/trace "Sending" (count stream-side-effects) "messages"))
           (doseq [{:keys [destination message]} stream-side-effects]
             (let [destination-stream (get-in descriptors* [destination :stream])]
               (s/put! destination-stream  message)))
-
           (if (not (empty? db-transactions))
-            ;; TODO remove me
-            (log/debug "Transacting" db-transactions))
+            (log/trace "Transacting" db-transactions))
           @(db/transact db-connection db-transactions)
-
           (swap! states assoc descriptor-id
             (-> next-state
               (assoc-in [:value :side-effects :db] [])
               (assoc-in [:value :side-effects :stream] [])))
           (if (= (:state next-state) :zombie)
             (s/close! (get-in descriptors* [descriptor-id :stream]))))))
-
     (Thread/sleep 100)) ;; TODO replace Thread/sleep with something more robust
   ;; TODO any cleanup goes here
   (log/info "Update thread finished cleaning up."))

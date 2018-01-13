@@ -47,11 +47,11 @@
 (def ^:private telnet (partial a/advance telnet-fsm))
 
 (defn- take-char [value input]
-  (log/debug :take-char value input)
+  (log/trace :take-char value input)
   (update-in value [:chars] conj input))
 
 (defn- take-str [{:keys [chars] :as value} _]
-  (log/debug :take-str value _)
+  (log/trace :take-str value _)
   (let [str (-> chars (byte-array) (String. "UTF-8"))]
     (-> value
       (update-in [:strs] conj str)

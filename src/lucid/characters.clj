@@ -13,8 +13,6 @@
     (hash/check offered-password password-hash-and-salt)))
 
 (defn create-character [character-name password]
-  (log/debug character-name)
-  (log/debug password)
   (q/create-character
     character-name
     (hash/derive password)))
