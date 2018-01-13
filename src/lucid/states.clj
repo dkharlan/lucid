@@ -11,14 +11,18 @@
 ;; specially. state actions can use that to accumulate side effects to be applied
 ;; by the fsm caller. actions or state guards should not depend on :side-effects, as
 ;; callers are expected to dissoc it before sending additional inputs to the fsm.
+;; see implementation of lucid.server.core/update! for an (the) example
 ;;
 ;; the value of :side-effects is a map with entries corresponding to distinct state
-;; containers. e.g., :db for a database, :server for transient server state, etc.
+;; containers. e.g., :db for a database, :stream for stream output, etc.
 ;;
-;; for lucid probably 3 will be needed:
-;;    :db for datomic
-;;    :server for session -> character association, session termination, etc.
-;;    :output for output to streams
+;; there are currently two types of side effects implemented:
+;;    :db for datomic => a vector of Datomic transactions
+;;    :stream for output to streams => {:destination <stream uuid> :message <string>}
+;;
+;; i can see a couple others being useful at some point:
+;;    :server for session->character association, session termination, etc.
+;;    :log for logging that should be applied by the update thread along with other effects
 ;;
 
 (defn password-matches-initial? [[{{:keys [initial-password]} :login} {password :message}]]
