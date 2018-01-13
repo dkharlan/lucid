@@ -10,9 +10,8 @@
             [lucid.database :as ldb]
             [datomic.api :as d]))
 
-;; TODO will also need to keep track of connection state(s)
-(defn- make-descriptor [id stream]
-  {:id id :stream stream})
+(defn- make-descriptor [id stream info]
+  {:id id :stream stream :info info})
 
 (defn- close! [descriptors states descriptor-id info]
   (swap! descriptors dissoc descriptor-id)
@@ -33,7 +32,7 @@
         game             (st/game)]
     (s/on-closed stream (partial close! descriptors states descriptor-id info))
     (s/consume message-handler! stream)
-    (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream))
+    (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream info))
     (swap! states assoc descriptor-id
       (fsm/fsm-event game {:type :telnet :descriptor-id descriptor-id}))
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
@@ -46,26 +45,30 @@
         messages
         (recur (conj messages message))))))
 
+;; TODO refactor for brevity / style
 (defn- update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
   (while (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
            (and (not= ::shutdown signal) (not (nil? signal))))
     (let [messages (collect! message-buffer)]
       (doseq [{:keys [descriptor-id message] :as msg} messages]
-        ;;(log/debug "Message:" msg)
-        ;;(log/info descriptor-id "says" (str "\"" message "\""))
-        (let [states*             @states
-              descriptors*        @descriptors
-              state               (get states* descriptor-id)
-              input               {:server-info {:descriptors descriptors* :states states*} ;; TODO should this be the full server info structure?
-                                   :message message}
-              next-state          (fsm/fsm-event state input)
-              db-transactions     (get-in next-state [:value :side-effects :db])
-              stream-side-effects (get-in next-state [:value :side-effects :stream])]
+        (log/trace "Message:" msg)
+        (log/trace descriptor-id "says" (str "\"" message "\""))
+        (let [states*                       @states
+              descriptors*                  @descriptors
+              state                         (get states* descriptor-id)
+              ;; TODO should this be the full server info structure?
+              input                         {:server-info {:descriptors descriptors* :states states*}
+                                             :message message}
+              next-state                    (fsm/fsm-event state input)
+              {db-transactions     :db
+               log-side-effects    :log
+               stream-side-effects :stream} (get-in next-state [:value :side-effects])]
           (log/trace "Previous state:" state)
           (log/trace "Next state:" next-state)
           (log/trace "Transactions:" db-transactions)
           (log/trace "Stream messages:" stream-side-effects)
+          (log/trace "Log messages" log-side-effects)
           (if (not (empty? stream-side-effects))
             (log/trace "Sending" (count stream-side-effects) "messages"))
           (doseq [{:keys [destination message]} stream-side-effects]
@@ -74,11 +77,19 @@
           (if (not (empty? db-transactions))
             (log/trace "Transacting" db-transactions))
           @(db/transact db-connection db-transactions)
+          (doseq [{:keys [level messages]} log-side-effects]
+            (->> messages
+              (interpose " ")
+              (apply str)
+              (log/log level)))
+          ;; TODO do this for all side effect types instead of explicitly for each
           (swap! states assoc descriptor-id
             (-> next-state
               (assoc-in [:value :side-effects :db] [])
-              (assoc-in [:value :side-effects :stream] [])))
+              (assoc-in [:value :side-effects :stream] [])
+              (assoc-in [:value :side-effects :log] [])))
           (if (= (:state next-state) :zombie)
+            ;; TODO log character name if descriptor has one
             (s/close! (get-in descriptors* [descriptor-id :stream]))))))
     (Thread/sleep 100)) ;; TODO replace Thread/sleep with something more robust
   ;; TODO any cleanup goes here

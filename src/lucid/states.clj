@@ -3,9 +3,6 @@
             [lucid.characters :as chars]
             [taoensso.timbre :as log]))
 
-(def character-name-regex #"^[A-z]{3,}$")
-(def password-regex #"^[A-Za-z\d]{8,}$")
-
 ;;
 ;; states can keep anything in their accumulator, but the :side-effects entry is treated
 ;; specially. state actions can use that to accumulate side effects to be applied
@@ -24,6 +21,11 @@
 ;;    :server for session->character association, session termination, etc.
 ;;    :log for logging that should be applied by the update thread along with other effects
 ;;
+;; TODO will need to think about how to organize everything below
+;;
+
+(def character-name-regex #"^[A-z]{3,}$")
+(def password-regex #"^[A-Za-z\d]{8,}$")
 
 (defn password-matches-initial? [[{{:keys [initial-password]} :login} {password :message}]]
   (= password initial-password))
@@ -42,6 +44,9 @@
 (defn- send-to-self [accumulator message]
   (let [self (get-in accumulator [:login :descriptor-id])]
     (send-to-desc accumulator self message)))
+
+(defn- log [accumulator level & messages]
+  (update-in accumulator [:side-effects :log] conj {:level level :messages messages}))
 
 (defn- sendln-to-self [accumulator message]
   (send-to-self accumulator (str message "\n")))
@@ -70,18 +75,30 @@
 (defn print-password-rules [accumulator & _]
   (sendln-to-self accumulator "Passwords must be alphanumeric and at least 8 characters long."))
 
-(defn print-invalid-password [accumulator & _]
-  (sendln-to-self accumulator "Incorrect password. Goodbye."))
+(defn print-invalid-password [accumulator {{:keys [descriptors]} :server-info} _ _]
+  (let [descriptor-id  (get-in accumulator [:login :descriptor-id])
+        remote-addr    (get-in descriptors [descriptor-id :info :remote-addr])
+        character-name (get-in accumulator [:login :character-name])]
+    (-> accumulator
+      (sendln-to-self "Incorrect password. Goodbye.")
+      (log :warn remote-addr "failed password authentication for" (str "\"" character-name "\"")))))
 
-(defn print-login-message [accumulator & _]
-  (sendln-to-self accumulator "Welcome!"))
+(defn log-character-in [accumulator {{:keys [descriptors]} :server-info} _ _]
+  (let [descriptor-id  (get-in accumulator [:login :descriptor-id])
+        character-name (get-in accumulator [:login :character-name])
+        remote-addr    (get-in descriptors [descriptor-id :info :remote-addr])]
+    (-> accumulator
+      (sendln-to-self "Welcome!")
+      (log :info "Character" (str "\"" character-name "\"") "logged in from" remote-addr))))
 
-(defn log-character-in [accumulator & _]
-  (let [{character-name :character-name password :initial-password} (:login accumulator)]
+(defn create-character [accumulator _ _ _]
+  (let [{character-name :character-name password :initial-password} (:login accumulator)
+         descriptor-id (get-in accumulator [:login :descriptor-id])]
     (-> accumulator
       (update-in [:login] dissoc :initial-password)
       (sendln-to-self (str "Thanks for creating your character, " character-name "!"))
-      (queue-txn (chars/create-character character-name password)))))
+      (queue-txn (chars/create-character character-name password))
+      (log :info "Descriptor" descriptor-id "created character" (str "\"" character-name "\"")))))
 
 (defn add-descriptor-id [accumulator {:keys [descriptor-id]} & _]
   (assoc-in accumulator [:login :descriptor-id] descriptor-id))
@@ -129,13 +146,13 @@
     [[_ {:server-info _ :message character-name-regex}]]                          -> {:action add-new-character-name} :awaiting-initial-password
     [_]                                                                           -> {:action print-name-rules} :awaiting-name]
    [:awaiting-password
-    [_ :guard password-is-valid?] -> {:action print-login-message} :logged-in
+    [_ :guard password-is-valid?] -> {:action log-character-in} :logged-in
     [_]                           -> {:action print-invalid-password} :zombie]
    [:awaiting-initial-password
     [[_ {:server-info _ :message password-regex}]] -> {:action add-initial-password} :awaiting-password-confirmation
     [_]                                            -> {:action print-password-rules} :awaiting-initial-password]
    [:awaiting-password-confirmation
-    [[_ {:server-info _ :message password-regex}] :guard password-matches-initial?] -> {:action log-character-in} :logged-in
+    [[_ {:server-info _ :message password-regex}] :guard password-matches-initial?] -> {:action create-character} :logged-in
     [_]                                                                             -> {:action print-goodbye} :zombie]
    [:logged-in
     [[_ {:server-info _ :message "quit"}]] -> {:action print-goodbye} :zombie
