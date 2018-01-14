@@ -20,9 +20,12 @@
                          (require '[alembic.still :as alembic]))}
   :profiles {:uberjar {:aot :all}
              :dev {:dependencies [[alembic "0.3.2"]
-                                  [figwheel-sidecar "0.5.4-6"]]
+                                  [figwheel-sidecar "0.5.4-6"]
+                                  [com.cemerick/piggieback "0.2.2"]
+                                  [org.clojure/tools.nrepl "0.2.12"]]
                    :source-paths ["src/clj" "dev"]
-                   :repl-options {:init-ns user}}
+                   :repl-options {:init-ns user
+                                  :nrepl-middleware [cemerick.piggieback/wrap-cljs-repl]}}
              :repl {:dependencies [[acyclic/squiggly-clojure "0.1.8"]]
                     :env {:squiggly {:checkers [:eastwood :kibit]
                                      :eastwood-options {:add-linters [:unused-locals
@@ -30,5 +33,14 @@
                                                                       :unused-private-vars
                                                                       :keyword-typos]}}}}}
   :plugins [[lein-environ "1.0.0"]
-            [lein-figwheel "0.5.14"]])
+            [lein-figwheel "0.5.14"]]
+  :cljsbuild {:builds [{:id "dev"
+                        :source-paths ["src/cljs"]
+                        :compiler {:main "lucid.client.core"
+                                   :output-dir "resources/public/js/compiled"
+                                   :output-to  "resources/public/js/compiled/main.js"
+                                   :asset-path "js/compiled"
+                                   :optimizations :none
+                                   :source-map true}
+                        :figwheel true}]})
 
