@@ -20,7 +20,7 @@
                          (require '[alembic.still :as alembic]))}
   :profiles {:uberjar {:aot :all}
              :dev {:dependencies [[alembic "0.3.2"]
-                                  [figwheel-sidecar "0.5.4-6"]
+                                  [figwheel-sidecar "0.5.14"]
                                   [com.cemerick/piggieback "0.2.2"]
                                   [org.clojure/tools.nrepl "0.2.12"]]
                    :source-paths ["src/clj" "dev"]
