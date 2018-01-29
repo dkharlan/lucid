@@ -107,18 +107,20 @@
 
 (defn update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
-  ;; TODO check updater-signal
   (let [bundle-message$       #(bundle-message$ % states descriptors)
         persist-transactions! #(persist-transactions! %1 %2 db-connection)]
     (d/loop []
-      (d/chain (s/take! message-buffer)
-        bundle-message$
-        event
-        affect-streams!
-        transactor!
-        record-logs!
-        kill-drained-or-zombie!)
-      (d/recur))))
+      (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
+        (when-not (or (not= ::shutdown signal) (not (nil? signal)))
+          (d/chain (s/take! message-buffer)
+            bundle-message$
+            event
+            affect-streams!
+            transactor!
+            record-logs!
+            kill-drained-or-zombie!)
+          (d/recur)))))
+  (log/info "Update thread finished cleaning up."))
 
 ;; TODO refactor to use manifold.deferred/loop! !!!!
 ;; TODO refactor for brevity / style
