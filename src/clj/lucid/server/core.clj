@@ -54,8 +54,8 @@
       (f input))))
 
 (def ^:private bundle-message$
-  (skip-if= ::drained
-    (fn [states descriptors {:keys [descriptor-id message]}]
+  (skip-if= nil
+    (fn [{:keys [descriptor-id message]} states descriptors ]
       (log/trace (format "Message from descriptor %s:" descriptor-id) message)
       (let [states* @states
             state (get states* descriptor-id)
@@ -63,68 +63,62 @@
                     :message     message}])))))
 
 (def ^:private event
-  (skip-if= ::drained
+  (skip-if= nil
     (fn [[state input]]
       (log/trace "Previous state:" state)
       [input (fsm/fsm-event state input)])))
 
 (def ^:private affect-streams!
-  (skip-if= ::drained
-    (fn [{{:keys [descriptors*]} :server-info :as input}
-         {{{stream-side-effects :stream} :side-effects} :value :as next-state}]
+  (skip-if= nil
+    (fn [[{{:keys [descriptors*]} :server-info :as input}
+          {{{stream-side-effects :stream} :side-effects} :value :as next-state}]]
       (when-not (empty? stream-side-effects)
         (log/trace "Stream messages:" stream-side-effects)
         (doseq [{:keys [destination message]} stream-side-effects]
-        (let [destination-stream (get-in descriptors* [destination :stream])]
-          (s/put! destination-stream  message))))
+          (let [destination-stream (get-in descriptors* [destination :stream])]
+            (s/put! destination-stream  message))))
       [input next-state])))
 
 (def ^:private persist-transactions!
-  (skip-if= ::drained
-    (fn [db-connection input
-         {{{db-transactions :db} :side-effects} :value :as next-state}]
+  (skip-if= nil
+    (fn [[input {{{db-transactions :db} :side-effects} :value :as next-state}] db-connection]
       (when-not (empty? db-transactions)
         (log/trace "Transacting" db-transactions)
         @(db/transact db-connection db-transactions))
       [input next-state])))
 
+(def ^:private record-logs!
+  (skip-if= nil
+    (fn [[input {{{log-entries :log} :side-effects} :value :as next-state}]]
+      (doseq [{:keys [level messages]} log-entries]
+        (->> messages
+          (interpose " ")
+          (apply str)
+          (log/log level)))
+      [input next-state])))
+
+(defn- kill-drained-or-zombie! [input next-state]
+  (if (or
+        (nil? input)
+        (= :zombie (:state next-state)))
+    (if-let [character-name (get-in next-state [:value :login :character-name])]
+      (log/info "Logging" (str "\"" character-name "\"") "out"))
+    (s/close! (get-in descriptors* [descriptor-id :stream]))))
+
 (defn update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
   ;; TODO check updater-signal
-  (let [bundle-message$ (partial bundle-message$ states descriptors)
-        transactor! (partial persist-transactions! db-connection)]
-    )
-  (d/loop []
-    (d/chain (s/take! message-buffer ::drained) ;; TODO should be :zombie? think about unifying with lucid.state's approach
-      bundle-message$
-      event
-      affect-streams!
-      persist-transactions!
-
-      (fn [next-state]
-        (log/trace "Next state:" next-state)
-        (let [{db-transactions     :db
-               log-side-effects    :log
-               stream-side-effects :stream} (get-in next-state [:value :side-effects])]
-          
-          (log/trace "Log messages" log-side-effects)
-
-          
-
-          (doseq [{:keys [level messages]} log-side-effects]
-            (->> messages
-              (interpose " ")
-              (apply str)
-              (log/log level)))
-
-          (when (= (:state next-state) :zombie)
-            (if-let [character-name (get-in next-state [:value :login :character-name])]
-              (log/info "Logging" (str "\"" character-name "\"") "out"))
-            (s/close! (get-in descriptors* [descriptor-id :stream])))
-          
-          ))
-
-      )))
+  (let [bundle-message$       #(bundle-message$ % states descriptors)
+        persist-transactions! #(persist-transactions! %1 %2 db-connection)]
+    (d/loop []
+      (d/chain (s/take! message-buffer)
+        bundle-message$
+        event
+        affect-streams!
+        transactor!
+        record-logs!
+        kill-drained-or-zombie!)
+      (d/recur))))
 
 ;; TODO refactor to use manifold.deferred/loop! !!!!
 ;; TODO refactor for brevity / style
