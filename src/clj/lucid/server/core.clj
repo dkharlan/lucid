@@ -3,12 +3,12 @@
             [clj-uuid :as uuid]
             [aleph.tcp :as tcp]
             [manifold.stream :as s]
+            [manifold.deferred :as d]
             [reduce-fsm :as fsm]
             [datomic.api :as db]
             [lucid.server.telnet :refer [telnet-handler!]]
             [lucid.states :as st]
-            [lucid.database :as ldb]
-            [datomic.api :as d]))
+            [lucid.database :as ldb]))
 
 (defn- make-descriptor [id stream info]
   {:id id :stream stream :info info})
@@ -46,9 +46,90 @@
         messages
         (recur (conj messages message))))))
 
+;; TODO can refactor a bit more
+(defn- skip-if= [val f]
+  (fn [& []]
+    (if (=  val)
+      input
+      (f input))))
+
+(def ^:private bundle-message$
+  (skip-if= ::drained
+    (fn [states descriptors {:keys [descriptor-id message]}]
+      (log/trace (format "Message from descriptor %s:" descriptor-id) message)
+      (let [states* @states
+            state (get states* descriptor-id)
+            [state {:server-info {:descriptors @descriptors :states states*}
+                    :message     message}])))))
+
+(def ^:private event
+  (skip-if= ::drained
+    (fn [[state input]]
+      (log/trace "Previous state:" state)
+      [input (fsm/fsm-event state input)])))
+
+(def ^:private affect-streams!
+  (skip-if= ::drained
+    (fn [{{:keys [descriptors*]} :server-info :as input}
+         {{{stream-side-effects :stream} :side-effects} :value :as next-state}]
+      (when-not (empty? stream-side-effects)
+        (log/trace "Stream messages:" stream-side-effects)
+        (doseq [{:keys [destination message]} stream-side-effects]
+        (let [destination-stream (get-in descriptors* [destination :stream])]
+          (s/put! destination-stream  message))))
+      [input next-state])))
+
+(def ^:private persist-transactions!
+  (skip-if= ::drained
+    (fn [db-connection input
+         {{{db-transactions :db} :side-effects} :value :as next-state}]
+      (when-not (empty? db-transactions)
+        (log/trace "Transacting" db-transactions)
+        @(db/transact db-connection db-transactions))
+      [input next-state])))
+
+(defn update! [descriptors states db-connection message-buffer updater-signal]
+  (log/info "Update thread started.")
+  ;; TODO check updater-signal
+  (let [bundle-message$ (partial bundle-message$ states descriptors)
+        transactor! (partial persist-transactions! db-connection)]
+    )
+  (d/loop []
+    (d/chain (s/take! message-buffer ::drained) ;; TODO should be :zombie? think about unifying with lucid.state's approach
+      bundle-message$
+      event
+      affect-streams!
+      persist-transactions!
+
+      (fn [next-state]
+        (log/trace "Next state:" next-state)
+        (let [{db-transactions     :db
+               log-side-effects    :log
+               stream-side-effects :stream} (get-in next-state [:value :side-effects])]
+          
+          (log/trace "Log messages" log-side-effects)
+
+          
+
+          (doseq [{:keys [level messages]} log-side-effects]
+            (->> messages
+              (interpose " ")
+              (apply str)
+              (log/log level)))
+
+          (when (= (:state next-state) :zombie)
+            (if-let [character-name (get-in next-state [:value :login :character-name])]
+              (log/info "Logging" (str "\"" character-name "\"") "out"))
+            (s/close! (get-in descriptors* [descriptor-id :stream])))
+          
+          ))
+
+      )))
+
+;; TODO refactor to use manifold.deferred/loop! !!!!
 ;; TODO refactor for brevity / style
 ;; TODO catch and handle exceptions so they don't kill the update thread
-(defn- update! [descriptors states db-connection message-buffer updater-signal]
+(defn- update!- [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
   (while (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
            (and (not= ::shutdown signal) (not (nil? signal))))
