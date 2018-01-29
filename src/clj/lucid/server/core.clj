@@ -55,22 +55,24 @@
 
 (def ^:private bundle-message$
   (skip-if= nil
-    (fn [{:keys [descriptor-id message]} states descriptors ]
+    (fn [{:keys [descriptor-id message]} states descriptors]
       (log/trace (format "Message from descriptor %s:" descriptor-id) message)
       (let [states* @states
             state (get states* descriptor-id)
-            [state {:server-info {:descriptors @descriptors :states states*}
-                    :message     message}])))))
+            input {:server-info {:descriptors @descriptors :states states*}
+                   :message     message}]
+        [descriptor-id input state]))))
 
 (def ^:private event
   (skip-if= nil
-    (fn [[state input]]
+    (fn [[descriptor-id input state]]
       (log/trace "Previous state:" state)
-      [input (fsm/fsm-event state input)])))
+      [descriptor-id input (fsm/fsm-event state input)])))
 
 (def ^:private affect-streams!
   (skip-if= nil
-    (fn [[{{:keys [descriptors*]} :server-info :as input}
+    (fn [[descriptor-id
+          {{:keys [descriptors*]} :server-info :as input}
           {{{stream-side-effects :stream} :side-effects} :value :as next-state}]]
       (when-not (empty? stream-side-effects)
         (log/trace "Stream messages:" stream-side-effects)
@@ -81,7 +83,8 @@
 
 (def ^:private persist-transactions!
   (skip-if= nil
-    (fn [[input {{{db-transactions :db} :side-effects} :value :as next-state}] db-connection]
+    (fn [[descriptor-id input
+          {{{db-transactions :db} :side-effects} :value :as next-state}] db-connection]
       (when-not (empty? db-transactions)
         (log/trace "Transacting" db-transactions)
         @(db/transact db-connection db-transactions))
@@ -89,7 +92,7 @@
 
 (def ^:private record-logs!
   (skip-if= nil
-    (fn [[input {{{log-entries :log} :side-effects} :value :as next-state}]]
+    (fn [[descriptor-id input {{{log-entries :log} :side-effects} :value :as next-state}]]
       (doseq [{:keys [level messages]} log-entries]
         (->> messages
           (interpose " ")
@@ -97,7 +100,7 @@
           (log/log level)))
       [input next-state])))
 
-(defn- kill-drained-or-zombie! [input next-state]
+(defn- kill-drained-or-zombie! [[descriptor-id {{:keys [descriptors*]} :server-info :as input} next-state]]
   (if (or
         (nil? input)
         (= :zombie (:state next-state)))
@@ -107,8 +110,8 @@
 
 (defn update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
-  (let [bundle-message$       #(bundle-message$ % states descriptors)
-        persist-transactions! #(persist-transactions! %1 %2 db-connection)]
+  (let [bundle-message$         #(bundle-message$ % states descriptors)
+        persist-transactions!   #(persist-transactions! % db-connection)]
     (d/loop []
       (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
         (when-not (or (not= ::shutdown signal) (not (nil? signal)))
@@ -116,7 +119,7 @@
             bundle-message$
             event
             affect-streams!
-            transactor!
+            persist-transactions!
             record-logs!
             kill-drained-or-zombie!)
           (d/recur)))))
