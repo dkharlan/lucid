@@ -48,8 +48,8 @@
 
 ;; TODO can refactor a bit more
 (defn- skip-if= [val f]
-  (fn [& []]
-    (if (=  val)
+  (fn [input & _]
+    (if (= input val)
       input
       (f input))))
 
