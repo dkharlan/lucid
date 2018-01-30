@@ -38,6 +38,57 @@
       (fsm/fsm-event game {:type :telnet :descriptor-id descriptor-id}))
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
+(defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors]
+  (log/trace (format "Message from descriptor %s:" descriptor-id) message)
+  (let [state (get states descriptor-id)
+        input {:server-info {:descriptors descriptors :states states}
+               :message     message}]
+    [descriptor-id input state]))
+
+(defn- event [[descriptor-id input state]]
+  (log/trace "Previous state:" state)
+  [descriptor-id input (fsm/fsm-event state input)])
+
+(defn- affect-streams! [[descriptor-id
+                         {{:keys [descriptors]} :server-info :as input}
+                         {{{stream-side-effects :stream} :side-effects} :value :as next-state}]]
+  (when-not (empty? stream-side-effects)
+    (log/trace "Stream messages:" stream-side-effects)
+    (doseq [{:keys [destination message]} stream-side-effects]
+      (let [destination-stream (get-in descriptors [destination :stream])]
+        (s/put! destination-stream  message))))
+  [descriptor-id input next-state])
+
+(defn- persist-transactions! [[descriptor-id input
+                               {{{db-transactions :db} :side-effects} :value :as next-state}] db-connection]
+  (when-not (empty? db-transactions)
+    (log/trace "Transacting" db-transactions)
+    @(db/transact db-connection db-transactions))
+  [descriptor-id input next-state])
+
+(defn- record-logs! [[descriptor-id input {{{log-entries :log} :side-effects} :value :as next-state}]]
+  (doseq [{:keys [level messages]} log-entries]
+    (->> messages
+      (interpose " ")
+      (apply str)
+      (log/log level)))
+  [descriptor-id input next-state])
+
+;; TODO see if there's a more elegant way to do this
+(defn- transition-state! [[descriptor-id _ {:keys [state] :as next-state}] states descriptors]
+  ;; TODO do this for all side effect types instead of explicitly for each
+  (if-not (= state :zombie)
+    (let [next-state (-> next-state
+                       (assoc-in [:value :side-effects :db] [])
+                       (assoc-in [:value :side-effects :stream] [])
+                       (assoc-in [:value :side-effects :log] []))]
+      (swap! states assoc descriptor-id next-state))
+    (do
+      (log/trace "Trying to remove session descriptor")
+      (if-let [character-name (get-in next-state [:value :login :character-name])]
+        (log/info "Logging" (str "\"" character-name "\"") "out"))
+      (s/close! (get-in descriptors [descriptor-id :stream])))))
+
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
 (defn- collect! [stream]
   (loop [messages []]
@@ -46,136 +97,29 @@
         messages
         (recur (conj messages message))))))
 
-;; TODO can refactor a bit more
-(defn- skip-if= [val f]
-  (fn [input & _]
-    (if (= input val)
-      input
-      (f input))))
-
-(def ^:private bundle-message$
-  (skip-if= nil
-    (fn [{:keys [descriptor-id message]} states descriptors]
-      (log/trace (format "Message from descriptor %s:" descriptor-id) message)
-      (let [states* @states
-            state (get states* descriptor-id)
-            input {:server-info {:descriptors @descriptors :states states*}
-                   :message     message}]
-        [descriptor-id input state]))))
-
-(def ^:private event
-  (skip-if= nil
-    (fn [[descriptor-id input state]]
-      (log/trace "Previous state:" state)
-      [descriptor-id input (fsm/fsm-event state input)])))
-
-(def ^:private affect-streams!
-  (skip-if= nil
-    (fn [[descriptor-id
-          {{:keys [descriptors*]} :server-info :as input}
-          {{{stream-side-effects :stream} :side-effects} :value :as next-state}]]
-      (when-not (empty? stream-side-effects)
-        (log/trace "Stream messages:" stream-side-effects)
-        (doseq [{:keys [destination message]} stream-side-effects]
-          (let [destination-stream (get-in descriptors* [destination :stream])]
-            (s/put! destination-stream  message))))
-      [input next-state])))
-
-(def ^:private persist-transactions!
-  (skip-if= nil
-    (fn [[descriptor-id input
-          {{{db-transactions :db} :side-effects} :value :as next-state}] db-connection]
-      (when-not (empty? db-transactions)
-        (log/trace "Transacting" db-transactions)
-        @(db/transact db-connection db-transactions))
-      [input next-state])))
-
-(def ^:private record-logs!
-  (skip-if= nil
-    (fn [[descriptor-id input {{{log-entries :log} :side-effects} :value :as next-state}]]
-      (doseq [{:keys [level messages]} log-entries]
-        (->> messages
-          (interpose " ")
-          (apply str)
-          (log/log level)))
-      [input next-state])))
-
-(defn- kill-drained-or-zombie! [[descriptor-id {{:keys [descriptors*]} :server-info :as input} next-state]]
-  (if (or
-        (nil? input)
-        (= :zombie (:state next-state)))
-    (if-let [character-name (get-in next-state [:value :login :character-name])]
-      (log/info "Logging" (str "\"" character-name "\"") "out"))
-    (s/close! (get-in descriptors* [descriptor-id :stream]))))
-
+;; TODO need more complete exception handling?
 (defn update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
-  (let [bundle-message$         #(bundle-message$ % states descriptors)
-        persist-transactions!   #(persist-transactions! % db-connection)]
-    (d/loop []
+  (loop []
+      (log/trace "Update loop")
       (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
-        (when-not (or (not= ::shutdown signal) (not (nil? signal)))
-          (d/chain (s/take! message-buffer)
-            bundle-message$
-            event
-            affect-streams!
-            persist-transactions!
-            record-logs!
-            kill-drained-or-zombie!)
-          (d/recur)))))
-  (log/info "Update thread finished cleaning up."))
-
-;; TODO refactor to use manifold.deferred/loop! !!!!
-;; TODO refactor for brevity / style
-;; TODO catch and handle exceptions so they don't kill the update thread
-(defn- update!- [descriptors states db-connection message-buffer updater-signal]
-  (log/info "Update thread started.")
-  (while (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
-           (and (not= ::shutdown signal) (not (nil? signal))))
-    (let [messages (collect! message-buffer)]
-      (doseq [{:keys [descriptor-id message] :as msg} messages]
-        (log/trace "Message:" msg)
-        (log/trace descriptor-id "says" (str "\"" message "\""))
-        (let [states*                       @states
-              descriptors*                  @descriptors
-              state                         (get states* descriptor-id)
-              input                         {;; TODO should this be the full server info structure?
-                                             :server-info {:descriptors descriptors* :states states*}
-                                             :message message}
-              next-state                    (fsm/fsm-event state input)
-              {db-transactions     :db
-               log-side-effects    :log
-               stream-side-effects :stream} (get-in next-state [:value :side-effects])]
-          (log/trace "Previous state:" state)
-          (log/trace "Next state:" next-state)
-          (log/trace "Transactions:" db-transactions)
-          (log/trace "Stream messages:" stream-side-effects)
-          (log/trace "Log messages" log-side-effects)
-          (if (not (empty? stream-side-effects))
-            (log/trace "Sending" (count stream-side-effects) "messages"))
-          (doseq [{:keys [destination message]} stream-side-effects]
-            (let [destination-stream (get-in descriptors* [destination :stream])]
-              (s/put! destination-stream  message)))
-          (if (not (empty? db-transactions))
-            (log/trace "Transacting" db-transactions))
-          @(db/transact db-connection db-transactions)
-          (doseq [{:keys [level messages]} log-side-effects]
-            (->> messages
-              (interpose " ")
-              (apply str)
-              (log/log level)))
-          ;; TODO do this for all side effect types instead of explicitly for each
-          (swap! states assoc descriptor-id
-            (-> next-state
-              (assoc-in [:value :side-effects :db] [])
-              (assoc-in [:value :side-effects :stream] [])
-              (assoc-in [:value :side-effects :log] [])))
-          (when (= (:state next-state) :zombie)
-            (if-let [character-name (get-in next-state [:value :login :character-name])]
-              (log/info "Logging" (str "\"" character-name "\"") "out"))
-            (s/close! (get-in descriptors* [descriptor-id :stream]))))))
-    (Thread/sleep 100)) ;; TODO replace Thread/sleep with something more robust
-  ;; TODO any cleanup goes here
+        (log/trace "Updater-signal:" signal)
+        (when (and (not= ::shutdown signal) (not (nil? signal)))
+          (doseq [message-info (collect! message-buffer)]
+            (log/trace "Message info:" message-info)
+            (try
+              (-> message-info 
+                (bundle-message$ @states @descriptors) 
+                event ;; <---- the stateless part
+                affect-streams!
+                (persist-transactions! db-connection)
+                record-logs!
+                (transition-state! states descriptors))
+              (catch Exception ex
+                (log/error "Uncaught exception while handling message from" (:descriptor-id message-info))
+                (log/error ex))))
+          (Thread/sleep 100) ;; TODO replace Thread/sleep with something more robust
+          (recur))))
   (log/info "Update thread finished cleaning up."))
 
 (defn- server* [descriptors states message-buffer acceptor tcp-server update-thread updater-signal]
