@@ -78,11 +78,11 @@
 (defn- transition-state! [[descriptor-id _ {:keys [state] :as next-state}] states descriptors]
   ;; TODO do this for all side effect types instead of explicitly for each
   (if-not (= state :zombie)
-    (let [next-state (-> next-state
-                       (assoc-in [:value :side-effects :db] [])
-                       (assoc-in [:value :side-effects :stream] [])
-                       (assoc-in [:value :side-effects :log] []))]
-      (swap! states assoc descriptor-id next-state))
+    (swap! states assoc descriptor-id
+      (-> next-state
+        (assoc-in [:value :side-effects :db] [])
+        (assoc-in [:value :side-effects :stream] [])
+        (assoc-in [:value :side-effects :log] [])))
     (do
       (log/trace "Trying to remove session descriptor")
       (if-let [character-name (get-in next-state [:value :login :character-name])]
