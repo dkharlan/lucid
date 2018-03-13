@@ -2,6 +2,9 @@
   (:require [chord.client :refer [ws-ch]]
             [cljs.core.async :refer [>! <! put! close! go go-loop]]))
 
+;; TODO use timbre for logging
+;; TODO add reagent and make a simple console and command entry control
+
 (def websocket-connection-endpoint "ws://localhost:8080/connect")
 
 (defn message-loop! [channel]
