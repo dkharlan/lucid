@@ -10,10 +10,12 @@
       (do
         (def channel ws-channel) ;; for the REPL
         (go-loop []
-          (let [{:keys [message error]} (<! ws-channel)]
-            (if error
-              (console.error error)
-              (do
-                (console.log "Server said:" message)
-                (recur)))))))))
+          (if-let [value (<! ws-channel)]
+            (let [{:keys [message error]} value]
+              (if error
+                (console.error error)
+                (do
+                  (console.log "Server said:" message)
+                  (recur))))
+            (console.log "Connection closed.")))))))
 
