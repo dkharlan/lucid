@@ -1,5 +1,6 @@
 (ns lucid.server.http
   (:require [taoensso.timbre :as log]
+            [aleph.http :as http]
             [compojure.core :refer [GET routes]]
             [compojure.route :as route]
             [manifold.deferred :as d]
