@@ -1,8 +1,8 @@
 (ns lucid.client.core
-  (:require [chord.client :refer [ws-ch]]
-            [cljs.core.async :refer [>! <! put! close! go go-loop]]))
+  (:require [cljs.core.async :refer [>! <! put! close! go go-loop]]
+            [taoensso.timbre :as log]
+            [chord.client :refer [ws-ch]]))
 
-;; TODO use timbre for logging
 ;; TODO add reagent and make a simple console and command entry control
 
 (def websocket-connection-endpoint "ws://localhost:8080/connect")
@@ -12,9 +12,9 @@
     (if-let [value (<! channel)]
       (let [{:keys [message error]} value]
         (if error
-          (console.error error)
+          (log/error error)
           (do
-            (console.log "Server said:" message)
+            (log/info "Server said:" message)
             (recur))))
       (console.log "Connection closed."))))
 
@@ -22,9 +22,10 @@
   (go
     (let [{:keys [ws-channel error]} (<! (ws-ch url {:format :str}))]
       (if error
-        (console.error "Failed to establish websocket connection:" error)
+        (log/error "Failed to establish websocket connection:" error)
         (do
           (def channel ws-channel) ;; TODO remove me later; for REPL access
+          (log/info "Connection established.")
           (message-loop! ws-channel)))))) 
 
 (.addEventListener js/document "DOMContentLoaded"
