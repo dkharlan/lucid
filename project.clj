@@ -17,7 +17,8 @@
                  [ring/ring-core "1.6.3"]
                  [ring/ring-defaults "0.3.1"]
                  [compojure "1.6.0"]
-                 [jarohen/chord "0.8.1"]]
+                 [jarohen/chord "0.8.1"]
+                 [reagent "0.8.0-alpha2"]]
   :main ^:skip-aot lucid.core
   :source-paths ["src/clj"]
   :target-path "target/%s"
