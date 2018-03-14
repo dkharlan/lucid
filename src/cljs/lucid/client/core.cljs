@@ -8,18 +8,19 @@
 
 (def websocket-connection-endpoint "ws://localhost:8080/connect")
 
-(defn message-loop! [channel]
+(defn message-loop! [channel handler!]
   (go-loop []
     (if-let [value (<! channel)]
       (let [{:keys [message error]} value]
         (if error
           (log/error error)
           (do
-            (log/info "Server said:" message)
+            (log/info "Server said:" message) ;; TODO delete me
+            (handler! message)
             (recur))))
       (console.log "Connection closed."))))
 
-(defn connect! [url]
+(defn connect! [url handler!]
   (let [sender-fn-channel (chan)]
     (go
       (let [{:keys [ws-channel error]} (<! (ws-ch url {:format :str}))]
@@ -28,7 +29,7 @@
           (let [sender-fn #(go (>! ws-channel %))]
             (log/info "Connection established.")
             (>! sender-fn-channel sender-fn)
-            (message-loop! ws-channel)))))
+            (message-loop! ws-channel handler!)))))
     sender-fn-channel))
 
 (defn output-console [{:keys [buffer]}]
@@ -58,8 +59,10 @@
 (.addEventListener js/document "DOMContentLoaded"
   (fn [_]
     (go
-      (let [sender-fn (<! (connect! websocket-connection-endpoint))
-            buffer    (r/atom [])]
+      (let [buffer            (r/atom [])
+            handler!          #(swap! buffer conj %)
+            sender-fn-channel (connect! websocket-connection-endpoint handler!)
+            sender-fn         (<! sender-fn-channel)]
         (r/render
           [root {:buffer buffer :send-message! sender-fn}]
           (.getElementById js/document "app"))))))
