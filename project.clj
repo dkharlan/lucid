@@ -12,7 +12,13 @@
                  [aleph "0.4.4"]
                  [com.taoensso/timbre "4.10.0"]
                  [manifold "0.1.6"]
-                 [danlentz/clj-uuid "0.1.6"]]
+                 [danlentz/clj-uuid "0.1.6"]
+                 [javax.servlet/servlet-api "2.5"]
+                 [ring/ring-core "1.6.3"]
+                 [ring/ring-defaults "0.3.1"]
+                 [compojure "1.6.0"]
+                 [jarohen/chord "0.8.1"]
+                 [reagent "0.8.0-alpha2"]]
   :main ^:skip-aot lucid.core
   :source-paths ["src/clj"]
   :target-path "target/%s"
