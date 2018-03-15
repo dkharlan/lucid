@@ -2,11 +2,13 @@
   (:require [taoensso.timbre :as log]
             [clj-uuid :as uuid]
             [aleph.tcp :as tcp]
+            [aleph.http :as http]
             [manifold.stream :as s]
             [manifold.deferred :as d]
             [reduce-fsm :as fsm]
             [datomic.api :as db]
             [lucid.server.telnet :refer [telnet-handler!]]
+            [lucid.server.http :refer [make-routes]]
             [lucid.states :as st]
             [lucid.database :as ldb]))
 
@@ -122,39 +124,54 @@
           (recur))))
   (log/info "Update thread finished cleaning up."))
 
-(defn- server* [descriptors states message-buffer acceptor tcp-server update-thread updater-signal]
+(defn- server* [descriptors states message-buffer acceptor tcp-server http-server update-thread updater-signal]
   {:descriptors    descriptors
    :states         states
    :message-buffer message-buffer
    :acceptor       acceptor
    :tcp-server     tcp-server
+   :http-server    http-server
    :update-thread  update-thread
    :updater-signal updater-signal})
 
-(defn make-server [port db-uri]
-  (let [descriptors    (atom {})
+(defn make-server [{:keys [ports db-uri]}]
+  (let [tcp-port       (or (:tcp ports) 4000)
+        http-port      (or (:http ports) 8080)
+        descriptors    (atom {})
         states         (atom {})
         message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
         acceptor       (partial accept-new-connection! descriptors states message-buffer)
-        tcp-server     (delay (tcp/start-server acceptor {:port port}))
+        tcp-server     (delay (tcp/start-server acceptor {:port tcp-port}))
         db-connection  (db/connect db-uri)
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
         updater        (partial update! descriptors states db-connection message-buffer updater-signal)
-        update-thread  (Thread. updater "update-thread")]
-    (server* descriptors states message-buffer acceptor tcp-server update-thread updater-signal)))
+        update-thread  (Thread. updater "update-thread")
+        http-server    (delay (-> acceptor (make-routes) (http/start-server {:port http-port})))]
+    (server* descriptors states message-buffer acceptor tcp-server http-server update-thread updater-signal)))
 
-(defn start! [{:keys [tcp-server update-thread] :as this}]
+(defn start! [{:keys [tcp-server http-server update-thread] :as this}]
   (log/info "Launching update thread...")
   (.start update-thread)
+
   @tcp-server
   (log/info "TCP socket server has been started.")
+
+  @http-server
+  (log/info "HTTP server has been started.")
+
   this)
 
-(defn stop! [{:keys [descriptors tcp-server updater-signal]}]
+(defn stop! [{:keys [descriptors tcp-server http-server updater-signal]}]
   (doseq [{:keys [stream]} (vals @descriptors)]
     (s/close! stream))
+  (log/debug "Closed all connection streams.")
+
   (.close @tcp-server)
   (log/info "TCP socket server shutdown.")
+
+  (.close @http-server)
+  (log/info "HTTP server shutdown.")
+
   (reset! descriptors nil)
   (case @(s/try-put! updater-signal ::shutdown 5000 ::timeout)
     true      (log/debug "Update thread has received shutdown signal.")

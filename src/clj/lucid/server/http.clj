@@ -6,19 +6,20 @@
             [manifold.deferred :as d]
             [manifold.stream :as s]))
 
-(defn websocket-handler [{:keys [remote-addr] :as request}]
-  (log/info "Websocket connection request from" remote-addr)
+(defn websocket-handler [new-connection-handler! {:keys [remote-addr] :as request}]
   (d/catch
-      (d/let-flow [socket (http/websocket-connection request)]
-        (s/connect socket socket)
-        (s/on-closed socket #(log/info "Closed connection from" remote-addr)))
+      (d/let-flow [socket (http/websocket-connection request)
+                   info   {:remote-addr remote-addr}] ;; TODO anything else for info?
+        (log/debug "Websocket connection request from" remote-addr)
+        (new-connection-handler! socket info))
       (fn [_]
+        (log/warn "Non-websocket request where websockets was expected from" remote-addr)
         {:status 400
          :headers {"Content-Type" "application/text"}
          :body "Websocket request expected"})))
 
-(def app
+(defn make-routes [new-connection-handler!]
   (routes
     (GET "/connect" request
-      (websocket-handler request))))
+      (websocket-handler new-connection-handler! request))))
 
