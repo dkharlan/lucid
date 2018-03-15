@@ -8,7 +8,7 @@
             [reduce-fsm :as fsm]
             [datomic.api :as db]
             [lucid.server.telnet :refer [telnet-handler!]]
-            [lucid.server.http :refer [make-routes]]
+            [lucid.server.http :refer [make-routes websocket-message-handler!]]
             [lucid.states :as st]
             [lucid.database :as ldb]))
 
@@ -26,18 +26,23 @@
 
 (defn- accept-new-connection! [descriptors states message-buffer stream info]
   (log/debug "New connection initiated:" info)
-  (let [descriptor-id    (uuid/v1)
+  (let [connection-type  (:type info)
+        descriptor-id    (uuid/v1)
         make-message*    (partial make-message descriptor-id)
-        message-handler! (partial telnet-handler!
-                           (atom []) ;; TODO may want to keep track of the leftovers atom someday
-                           message-buffer
-                           make-message*)
+        message-handler! (case connection-type
+                           :tcp  (partial telnet-handler!
+                                   (atom []) ;; TODO may want to keep track of the leftovers atom someday
+                                   message-buffer
+                                   make-message*)
+                           :http (partial websocket-message-handler!
+                                   message-buffer
+                                   make-message*))
         game             (st/game)]
     (s/on-closed stream (partial close! descriptors states descriptor-id info))
     (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream info))
     (swap! states assoc descriptor-id
-      (fsm/fsm-event game {:type :telnet :descriptor-id descriptor-id}))
+      (fsm/fsm-event game {:descriptor-id descriptor-id}))
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
 (defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors]
@@ -124,11 +129,10 @@
           (recur))))
   (log/info "Update thread finished cleaning up."))
 
-(defn- server* [descriptors states message-buffer acceptor tcp-server http-server update-thread updater-signal]
+(defn- server* [descriptors states message-buffer tcp-server http-server update-thread updater-signal]
   {:descriptors    descriptors
    :states         states
    :message-buffer message-buffer
-   :acceptor       acceptor
    :tcp-server     tcp-server
    :http-server    http-server
    :update-thread  update-thread
@@ -141,13 +145,17 @@
         states         (atom {})
         message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
         acceptor       (partial accept-new-connection! descriptors states message-buffer)
-        tcp-server     (delay (tcp/start-server acceptor {:port tcp-port}))
+        tcp-acceptor   (fn [stream info]
+                         (acceptor stream (assoc info :type :tcp)))
+        http-acceptor  (fn [stream info]
+                         (acceptor stream (assoc info :type :http)))
+        tcp-server     (delay (tcp/start-server tcp-acceptor {:port tcp-port}))
         db-connection  (db/connect db-uri)
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
         updater        (partial update! descriptors states db-connection message-buffer updater-signal)
         update-thread  (Thread. updater "update-thread")
-        http-server    (delay (-> acceptor (make-routes) (http/start-server {:port http-port})))]
-    (server* descriptors states message-buffer acceptor tcp-server http-server update-thread updater-signal)))
+        http-server    (delay (-> http-acceptor (make-routes) (http/start-server {:port http-port})))]
+    (server* descriptors states message-buffer tcp-server http-server update-thread updater-signal)))
 
 (defn start! [{:keys [tcp-server http-server update-thread] :as this}]
   (log/info "Launching update thread...")

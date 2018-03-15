@@ -1,5 +1,6 @@
 (ns lucid.client.core
   (:require [cljs.core.async :refer [>! <! put! close! go go-loop chan]]
+            [clojure.string :refer [trim]]
             [taoensso.timbre :as log] 
             [chord.client :refer [ws-ch]]
             [reagent.core :as r]))
@@ -63,7 +64,7 @@
   (fn [_]
     (go
       (let [buffer            (r/atom [])
-            handler!          #(swap! buffer conj %)
+            handler!          #(swap! buffer conj (trim %))
             sender-fn-channel (connect! websocket-connection-endpoint handler!)
             sender-fn         (<! sender-fn-channel)]
         (r/render

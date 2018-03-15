@@ -23,3 +23,8 @@
     (GET "/connect" request
       (websocket-handler new-connection-handler! request))))
 
+(defn websocket-message-handler! [buffer transform message]
+  (->> message
+    (transform)
+    (s/put! buffer)))
+

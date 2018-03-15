@@ -103,11 +103,6 @@
 (defn add-descriptor-id [accumulator {:keys [descriptor-id]} & _]
   (assoc-in accumulator [:login :descriptor-id] descriptor-id))
 
-(defn log-in-websocket-character [accumulator {:keys [character-name] :as input-params} & _]
-  (-> accumulator
-    (assoc-in [:login :character-name] character-name)
-    (add-descriptor-id input-params)))
-
 (defn print-goodbye [accumulator & _]
   (sendln-to-self accumulator "Goodbye."))
 
@@ -132,15 +127,10 @@
 (defn password-is-valid? [[{{:keys [character-name]} :login} {password :message}]]
   (chars/password-is-valid? character-name password))
 
-;; The first value should be one of:
-;;    :telnet             for a telnet connection
-;;    [:websocket name]   for a websocket connection for name
-;; Subsequent values are input lines from the player
 (defsm-inc game
   [[:initial
-    [[_ {:type :telnet :descriptor-id _}]]                      -> {:action add-descriptor-id} :awaiting-name
-    [[_ {:type :websocket :descriptor-id _ :character-name _}]] -> {:action log-in-websocket-character} :logged-in
-    [_]                                                         -> :initial]
+    [[_ {:descriptor-id _}]] -> {:action add-descriptor-id} :awaiting-name
+    [_]                      -> :initial]
    [:awaiting-name
     [[_ {:server-info _ :message character-name-regex}] :guard character-exists?] -> {:action add-existing-character-name} :awaiting-password
     [[_ {:server-info _ :message character-name-regex}]]                          -> {:action add-new-character-name} :awaiting-initial-password
