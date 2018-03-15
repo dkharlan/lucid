@@ -1,6 +1,5 @@
 (ns lucid.client.core
   (:require [cljs.core.async :refer [>! <! put! close! go go-loop chan]]
-            [clojure.string :refer [trim]]
             [taoensso.timbre :as log] 
             [chord.client :refer [ws-ch]]
             [reagent.core :as r]))
@@ -43,7 +42,7 @@
     {:class "output-console zero-fill"
      :read-only true
      :ref scroll-to-bottom!
-     :value (apply str (interpose "\n" @buffer))}]]) ;; TODO doubt this is performant
+     :value (apply str @buffer)}]]) ;; TODO doubt this is performant
 
 (defn input-line [{:keys [send-message!]}]
   (letfn [(enter-handler [event]
@@ -64,7 +63,7 @@
   (fn [_]
     (go
       (let [buffer            (r/atom [])
-            handler!          #(swap! buffer conj (trim %))
+            handler!          #(swap! buffer conj %)
             sender-fn-channel (connect! websocket-connection-endpoint handler!)
             sender-fn         (<! sender-fn-channel)]
         (r/render
