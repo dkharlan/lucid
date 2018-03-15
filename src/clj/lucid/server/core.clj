@@ -24,6 +24,7 @@
 (defn- make-message [descriptor-id message]
   {:descriptor-id descriptor-id :message message})
 
+;; TODO pull the welcome message from somewhere
 (defn- accept-new-connection! [descriptors states message-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [connection-type  (:type info)
@@ -43,6 +44,7 @@
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream info))
     (swap! states assoc descriptor-id
       (fsm/fsm-event game {:descriptor-id descriptor-id}))
+    (s/put! stream "Welcome! What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
 (defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors]
