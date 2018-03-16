@@ -1,16 +1,18 @@
 (ns lucid.client.components)
 
-(defn scroll-to-bottom! [textarea]
-  (if textarea
-    (set! (.-scrollTop textarea) (.-scrollHeight textarea))))
+;; TODO might need this later
+;; (defn scroll-to-bottom! [textarea]
+;;   (if textarea
+;;     (set! (.-scrollTop textarea) (.-scrollHeight textarea))))
 
 (defn output-console [{:keys [buffer]}]
   [:div {:class "content"}
-   [:textarea
-    {:class "output-console zero-fill"
-     :read-only true
-     :ref scroll-to-bottom!
-     :value (apply str @buffer)}]]) ;; TODO doubt this is performant
+   (map-indexed
+     (fn [index line]
+       ^{:key index}
+       [:div {:class "line"}
+        [:span line]])
+     @buffer)])
 
 (defn input-line [{:keys [send-message!]}]
   (letfn [(enter-handler [event]
