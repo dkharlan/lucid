@@ -5,13 +5,18 @@
 ;;   (if textarea
 ;;     (set! (.-scrollTop textarea) (.-scrollHeight textarea))))
 
+(defn line->repr [line]
+  (if (coll? line)
+    (throw (js/Error. "Not implemented yet"))
+    [:span line]))
+
 (defn output-console [{:keys [buffer]}]
   [:div {:class "content"}
    (map-indexed
      (fn [index line]
        ^{:key index}
        [:div {:class "line"}
-        [:span line]])
+        (line->repr line)])
      @buffer)])
 
 (defn input-line [{:keys [send-message!]}]
