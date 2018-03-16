@@ -9,6 +9,7 @@
             [datomic.api :as db]
             [lucid.server.telnet :refer [telnet-handler!]]
             [lucid.server.http :refer [make-routes websocket-message-handler!]]
+            [lucid.server.colors :as colors]
             [lucid.states :as st]
             [lucid.database :as ldb]))
 
@@ -38,10 +39,18 @@
                            :http (partial websocket-message-handler!
                                    message-buffer
                                    make-message*))
-        game             (st/game)]
+        game             (st/game)
+        output-stream    (case connection-type
+                           :tcp (let [output-stream (s/stream)]
+                                  (s/connect-via
+                                    output-stream
+                                    #(s/put! stream (colors/escape-color-codes %))
+                                    stream)
+                                  output-stream) 
+                           :http stream)] ;; TODO hook up colors for http streams
     (s/on-closed stream (partial close! descriptors states descriptor-id info))
     (s/consume message-handler! stream)
-    (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream info))
+    (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id output-stream info))
     (swap! states assoc descriptor-id
       (fsm/fsm-event game {:descriptor-id descriptor-id}))
     (s/put! stream "Welcome! What is your name?")
