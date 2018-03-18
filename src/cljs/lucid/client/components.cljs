@@ -44,7 +44,7 @@
                 (send-message! message)
                 (.select input-box))))]
     [:div {:class "footer"}
-     [:input {:class "input-box zero-fill"
+     [:input {:class ["input-box" "zero-fill"]
               :type "text"
               :on-key-down enter-handler}]]))
 
