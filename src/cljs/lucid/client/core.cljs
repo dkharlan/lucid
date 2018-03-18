@@ -8,6 +8,7 @@
 
 (def websocket-connection-endpoint "ws://localhost:8080/connect")
 
+;; TODO show a user-facing error if connection fails
 (defn init! []
   (go
     (let [buffer            (r/atom [])
