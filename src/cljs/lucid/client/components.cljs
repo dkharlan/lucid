@@ -39,8 +39,10 @@
 (defn input-line [{:keys [send-message!]}]
   (letfn [(enter-handler [event]
             (if (= (-> event .-keyCode) 13)
-              (let [message (-> event .-target .-value)]
-                (send-message! message))))]
+              (let [input-box (.-target event)
+                    message   (.-value input-box)]
+                (send-message! message)
+                (.select input-box))))]
     [:div {:class "footer"}
      [:input {:class "input-box zero-fill"
               :type "text"
