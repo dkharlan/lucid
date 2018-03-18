@@ -26,6 +26,8 @@
   {:descriptor-id descriptor-id :message message})
 
 ;; TODO pull the welcome message from somewhere
+;; TODO the stream-type specific stuff should be pulled out of this namespace
+;; TODO holy wow there are a lot of nested, closed over state buckets...
 (defn- accept-new-connection! [descriptors states message-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [connection-type  (:type info)
@@ -41,13 +43,18 @@
                                    make-message*))
         game             (st/game)
         output-stream    (case connection-type
-                           :tcp (let [output-stream (s/stream)]
-                                  (s/connect-via
-                                    output-stream
-                                    #(s/put! stream (colors/escape-color-codes %))
-                                    stream)
-                                  output-stream) 
-                           :http stream)] ;; TODO hook up colors for http streams
+                           :tcp  (let [output-stream (s/stream)]
+                                   (s/connect-via
+                                     output-stream
+                                     #(s/put! stream (colors/escape-color-codes %))
+                                     stream)
+                                   output-stream) 
+                           :http (let [output-stream (s/stream)]
+                                   (s/connect-via
+                                     output-stream
+                                     #(s/put! stream (prn-str %))
+                                     stream)
+                                   output-stream))] ;; TODO hook up colors for http streams
     (s/on-closed stream (partial close! descriptors states descriptor-id info))
     (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id output-stream info))
