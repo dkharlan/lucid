@@ -60,7 +60,7 @@
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id output-stream info))
     (swap! states assoc descriptor-id
       (fsm/fsm-event game {:descriptor-id descriptor-id}))
-    (s/put! stream "Welcome! What is your name?")
+    (s/put! output-stream "Welcome! What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
 (defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors]
