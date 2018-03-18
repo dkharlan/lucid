@@ -1,4 +1,5 @@
-(ns lucid.client.components)
+(ns lucid.client.components
+  (:require [taoensso.timbre :as log]))
 
 ;; TODO might need this later
 ;; (defn scroll-to-bottom! [textarea]
@@ -19,7 +20,7 @@
 (defn line [{:keys [line]}]
   [:div {:class "line"}
    (cond
-     (string? line)
+     (or (string? line) (map? line)) 
      [text-run {:text-run line}]
 
      (coll? line)
