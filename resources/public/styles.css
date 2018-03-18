@@ -1,5 +1,5 @@
 :root {
-    --bgColorPage: #878787;
+    --bgColorPage: #000000;
     --bgColorOutputConsole: #403f3f;
     --bgColorInputBox: #333333;
     --fgColor: white;
@@ -25,8 +25,11 @@ input:focus, textarea:focus {
 }
 
 .content {
-    flex: 1 0 auto;
     display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 13px;
 }
 
 .footer {
@@ -53,3 +56,66 @@ input:focus, textarea:focus {
     color: var(--fgColor);
 }
 
+span.text-run:empty:before {
+    content: "\200b";
+}
+
+.text-run--default      {
+    color: #d3d3d3;
+}
+ 
+.text-run--light-blue   {
+    color: #1b4de2;
+}
+
+.text-run--dark-blue    {
+    color: #000066;
+}
+
+.text-run--light-cyan   {
+    color: #00ccff;
+}
+
+.text-run--dark-cyan    {
+    color: #009999;
+}
+
+.text-run--light-green  {
+    color: #33cc33;
+}
+
+.text-run--dark-green   {
+    color: #006600;
+}
+
+.text-run--pink         {
+    color: #ff00ff;
+}
+
+.text-run--purple       {
+    color: #660066;
+}
+
+.text-run--light-red    {
+    color: #ff0000;
+}
+
+.text-run--dark-red     {
+    color: #800000;
+}
+
+.text-run--white        {
+    color: #ffffff;
+}
+
+.text-run--gray         {
+    color: #6d6d6d;
+}
+
+.text-run--light-yellow {
+    color: #ffff00;
+}
+
+.text-run--dark-yellow  {
+    color: #cc9900;
+}

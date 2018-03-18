@@ -9,6 +9,7 @@
             [datomic.api :as db]
             [lucid.server.telnet :refer [telnet-handler!]]
             [lucid.server.http :refer [make-routes websocket-message-handler!]]
+            [lucid.server.colors :as colors]
             [lucid.states :as st]
             [lucid.database :as ldb]))
 
@@ -24,7 +25,15 @@
 (defn- make-message [descriptor-id message]
   {:descriptor-id descriptor-id :message message})
 
+(defn inc-fsm [state input]
+  (fsm/fsm-event state input))
+
+(defn reduce-fsm [state coll]
+  (reduce inc-fsm state coll))
+
 ;; TODO pull the welcome message from somewhere
+;; TODO the stream-type specific stuff should be pulled out of this namespace
+;; TODO holy wow there are a lot of nested, closed over state buckets...
 (defn- accept-new-connection! [descriptors states message-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [connection-type  (:type info)
@@ -38,13 +47,33 @@
                            :http (partial websocket-message-handler!
                                    message-buffer
                                    make-message*))
-        game             (st/game)]
+        game             (st/game)
+        output-stream    (case connection-type
+                           :tcp  (let [output-stream (s/stream)]
+                                   (s/connect-via
+                                     output-stream
+                                     #(s/put! stream (-> % (colors/escape-color-codes) (str "\n")))
+                                     stream)
+                                   output-stream) 
+                           :http (let [output-stream    (s/stream)
+                                       http-color-state (atom
+                                                          (colors/http-colors {:chars [] :strs [] :lines []}))]
+                                   (s/consume 
+                                     (fn [message]
+                                       (let [{{:keys [lines]} :value :as next-state}
+                                             (reduce-fsm @http-color-state (-> message (vec) (conj :end)))]
+                                         (reset! http-color-state
+                                           (assoc-in next-state [:value :lines] []))
+                                         (doseq [line lines]
+                                           (s/put! stream (prn-str line)))))
+                                     output-stream)
+                                   output-stream))]
     (s/on-closed stream (partial close! descriptors states descriptor-id info))
     (s/consume message-handler! stream)
-    (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id stream info))
+    (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id output-stream info))
     (swap! states assoc descriptor-id
-      (fsm/fsm-event game {:descriptor-id descriptor-id}))
-    (s/put! stream "Welcome! What is your name?")
+      (inc-fsm game {:descriptor-id descriptor-id}))
+    (s/put! output-stream "Welcome! What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
 (defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors]
@@ -56,7 +85,7 @@
 
 (defn- event [[descriptor-id input state]]
   (log/trace "Previous state:" state)
-  [descriptor-id input (fsm/fsm-event state input)])
+  [descriptor-id input (inc-fsm state input)])
 
 (defn- affect-streams! [[descriptor-id
                          {{:keys [descriptors]} :server-info :as input}

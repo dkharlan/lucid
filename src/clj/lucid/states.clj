@@ -41,15 +41,12 @@
 (defn- sendln-to-desc [accumulator desc message]
   (send-to-desc accumulator desc (str message "\n")))
 
-(defn- send-to-self [accumulator message]
+(defn- sendln-to-self [accumulator message]
   (let [self (get-in accumulator [:login :descriptor-id])]
     (send-to-desc accumulator self message)))
 
 (defn- log [accumulator level & messages]
   (update-in accumulator [:side-effects :log] conj {:level level :messages messages}))
-
-(defn- sendln-to-self [accumulator message]
-  (send-to-self accumulator (str message "\n")))
 
 (defn- queue-txn [accumulator txn]
   (update-in accumulator [:side-effects :db] conj txn))
@@ -119,7 +116,7 @@
                     (if (= destination-descriptor-id source-descriptor-id) "You" source-name)
                     " said \""
                     message
-                    "\"\n")}))))
+                    "\"")}))))
 
 (defn character-exists? [[_ {character-name :message}]]
   (chars/character-exists? character-name))
