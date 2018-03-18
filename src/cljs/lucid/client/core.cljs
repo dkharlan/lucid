@@ -12,7 +12,8 @@
   (go
     (let [buffer            (r/atom [])
           handler!          #(swap! buffer conj (read-string %))
-          sender-fn-channel (ws/connect! websocket-connection-endpoint handler!)
+          close-handler!    #(swap! buffer conj [{:color :white :text "Connection closed."}])
+          sender-fn-channel (ws/connect! websocket-connection-endpoint handler! close-handler!)
           sender-fn         (<! sender-fn-channel)]
       (r/render
         [c/root {:buffer buffer :send-message! sender-fn}]

@@ -3,7 +3,7 @@
             [cljs.core.async :refer [>! <! go go-loop chan]]
             [chord.client :refer [ws-ch]]))
 
-(defn message-loop! [channel handler!]
+(defn message-loop! [channel handler! close-handler!]
   (go-loop []
     (if-let [value (<! channel)]
       (let [{:keys [message error]} value]
@@ -13,9 +13,11 @@
             (log/info "Server said:" message) ;; TODO delete me
             (handler! message)
             (recur))))
-      (console.log "Connection closed."))))
+      (do
+        (close-handler!)
+        (console.log "Connection closed.")))))
 
-(defn connect! [url handler!]
+(defn connect! [url handler! close-handler!]
   (let [sender-fn-channel (chan)]
     (go
       (let [{:keys [ws-channel error]} (<! (ws-ch url {:format :str}))]
@@ -24,6 +26,6 @@
           (let [sender-fn #(go (>! ws-channel %))]
             (log/info "Connection established.")
             (>! sender-fn-channel sender-fn)
-            (message-loop! ws-channel handler!)))))
+            (message-loop! ws-channel handler! close-handler!)))))
     sender-fn-channel))
 
