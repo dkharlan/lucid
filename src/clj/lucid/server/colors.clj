@@ -117,7 +117,7 @@
     true           (assoc :escape
                      (get-in color-codes [input :http]))))
 
-(fsm/defsm-inc test-colors
+(fsm/defsm-inc http-colors
   [[:input
     :end     -> {:action take-line}       :input
     \$       ->                           :escaping
