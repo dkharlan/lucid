@@ -52,7 +52,7 @@
                            :tcp  (let [output-stream (s/stream)]
                                    (s/connect-via
                                      output-stream
-                                     #(s/put! stream (colors/escape-color-codes %))
+                                     #(s/put! stream (-> % (colors/escape-color-codes) (str "\n")))
                                      stream)
                                    output-stream) 
                            :http (let [output-stream    (s/stream)
