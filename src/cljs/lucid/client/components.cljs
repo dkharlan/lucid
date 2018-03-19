@@ -31,10 +31,11 @@
 
 (defn output-console [{:keys [buffer]}]
   [:div {:class "content"}
-   (map-indexed
-     (fn [index l]
-       [line {:key index :line l}])
-     @buffer)])
+   [:div {:class "console"}
+    (map-indexed
+      (fn [index l]
+        [line {:key index :line l}])
+      @buffer)]])
 
 (defn input-line [{:keys [send-message!]}]
   (letfn [(enter-handler [event]
