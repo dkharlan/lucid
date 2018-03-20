@@ -1,10 +1,7 @@
 (ns lucid.client.components
-  (:require [taoensso.timbre :as log]))
-
-;; TODO might need this later
-;; (defn scroll-to-bottom! [textarea]
-;;   (if textarea
-;;     (set! (.-scrollTop textarea) (.-scrollHeight textarea))))
+  (:require [taoensso.timbre :as log]
+            [lucid.client.helpers :refer [scrolled-to-bottom? scroll-to-bottom!]]
+            [reagent.core :as r]))
 
 (defn text-run [{:keys [text-run]}]
   (let [text        (if (string? text-run)
@@ -30,12 +27,22 @@
        line))])
 
 (defn output-console [{:keys [buffer]}]
-  [:div {:class "console"}
-   [:div {:class "content"}
-    (map-indexed
-      (fn [index l]
-        [line {:key index :line l}])
-      @buffer)]])
+  (let [!scrolled-to-bottom? (r/atom true)]
+    (fn []
+      [:div {:class     "console"
+             :ref       (fn [console]
+                          (when (and console @!scrolled-to-bottom?)
+                            (scroll-to-bottom! console)))
+             :on-scroll (fn [event]
+                          (let [console (.-target event)
+                                scrolled-to-bottom? (scrolled-to-bottom? console)]
+                            (if (not= scrolled-to-bottom? @!scrolled-to-bottom?) 
+                              (reset! !scrolled-to-bottom? scrolled-to-bottom?))))}
+       [:div {:class "content"}
+        (map-indexed
+          (fn [index l]
+            [line {:key index :line l}])
+          @buffer)]])))
 
 (defn input-line [{:keys [send-message!]}]
   (letfn [(enter-handler [event]
