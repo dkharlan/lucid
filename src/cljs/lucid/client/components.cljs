@@ -30,8 +30,8 @@
        line))])
 
 (defn output-console [{:keys [buffer]}]
-  [:div {:class "content"}
-   [:div {:class "console"}
+  [:div {:class "console"}
+   [:div {:class "content"}
     (map-indexed
       (fn [index l]
         [line {:key index :line l}])
