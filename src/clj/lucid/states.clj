@@ -1,7 +1,8 @@
 (ns lucid.states
-  (:require [reduce-fsm :refer [defsm-inc] :as fsm]
+  (:require [taoensso.timbre :as log]
+            [reduce-fsm :refer [defsm-inc] :as fsm]
             [lucid.characters :as chars]
-            [taoensso.timbre :as log]))
+            [lucid.commands.core :as cm]))
 
 ;;
 ;; states can keep anything in their accumulator, but the :side-effects entry is treated
@@ -143,7 +144,7 @@
     [_]                                                                             -> {:action print-goodbye} :zombie]
    [:logged-in
     [[_ {:server-info _ :message "quit"}]] -> {:action print-goodbye} :zombie
-    [_]                                    -> {:action echo-message} :logged-in]
+    [_]                                    -> {:action cm/parse}      :logged-in]
    [:zombie
     [_] -> :zombie]]
   :default-acc {:side-effects {:stream [] :db []}}
