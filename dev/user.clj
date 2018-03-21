@@ -4,6 +4,8 @@
             [lucid.database :as ldb]
             [lucid.util :as util]))
 
+(use 'clojure.repl)
+
 (log/merge-config!
   {:appenders
    {:println
