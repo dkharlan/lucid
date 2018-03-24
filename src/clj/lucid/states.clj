@@ -104,21 +104,6 @@
 (defn print-goodbye [accumulator & _]
   (sendln-to-self accumulator "Goodbye."))
 
-(defn echo-message [accumulator {:keys [server-info message]} & _]
-  (let [{:keys [descriptors states]} server-info
-        source-descriptor-id         (get-in accumulator [:login :descriptor-id])
-        source-name                  (or
-                                        (get-in states [source-descriptor-id :value :login :character-name])
-                                        source-descriptor-id)]
-    (update-in accumulator [:side-effects :stream] concat
-      (for [destination-descriptor-id (keys descriptors)]
-        {:destination destination-descriptor-id 
-         :message (str
-                    (if (= destination-descriptor-id source-descriptor-id) "You" source-name)
-                    " said \""
-                    message
-                    "\"")}))))
-
 (defn character-exists? [[_ {character-name :message}]]
   (chars/character-exists? character-name))
 

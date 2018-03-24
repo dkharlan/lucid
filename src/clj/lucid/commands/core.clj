@@ -23,17 +23,24 @@
 
    $self
    The descriptor ID of the player executing the command
+
+   $server-info
+   A map containing information about the current server states.  See lucid.server.core for details.
   "
   [name args & body]
-  (let [accumulator-sym (gensym "accumulator")]
+  (let [accumulator-sym (gensym "accumulator")
+        server-info-sym (gensym "server-info")]
     `(def ~name
        (with-meta
-         (fn ~(into [accumulator-sym] args) 
+         (fn ~(into [accumulator-sym server-info-sym] args) 
            (let [side-effects#
                  (atom {})
 
                  ~'$self
                  (get-in ~accumulator-sym [:login :descriptor-id])
+
+                 ~'$server-info
+                 ~server-info-sym
 
                  ~'$sendln!
                  (fn [destination# message#]
@@ -55,38 +62,42 @@
                @side-effects#)))
          {:arity ~(count args)}))))
 
+;; TODO infer correct ending punctuation
 (defcommand say [message]
-  ($sendln! $self (str "You said: " message)))
+  (let [{:keys [states descriptors]} $server-info
+        speaker-name (or
+                       (get-in states [$self :value :login :character-name])
+                       $self)]
+    (doseq [destination-descriptor-id (keys descriptors)]
+      ($log! :info "Will be sending to" destination-descriptor-id)
+      ($sendln! destination-descriptor-id
+        (str
+          (if (= destination-descriptor-id $self) "You" speaker-name)
+          " said \""
+          message
+          "\"")))))
 
 (def command-table
   {"say" say})
 
-(defn parse [acc {:keys [message]} _ _]
+(defn parse [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
         send-to-self     #(update-in %1 [:side-effects :stream] conj
                             {:destination self-desc-id :message %2})
 
         [command args]   (string/split message #"\s+" 2)
         command-fn       (get command-table command)]
-
-    ;; TODO remove me
-    (log/debug "Command, args:" command args)
-
     (if-not command-fn
       (send-to-self acc "No such command.")
       (let [command-arity    (-> command-fn (meta) (:arity))
             {remaining-args :remaining-args
              parsed-args     :strings}
             (p/parse command-arity args)]
-
-        ;; TODO remove me
-        (log/debug "Parsed args, remaining args:" parsed-args remaining-args)
-
         ;; TODO pull true case handler from command metadata
         (if (pos? remaining-args)
           (send-to-self acc
             (str "'" command "' takes "
               command-arity (if (> command-arity 1) " arguments" " argument")
               " but you only provided " (count parsed-args) "."))
-          (apply command-fn acc parsed-args))))))
+          (apply command-fn acc server-info parsed-args))))))
 

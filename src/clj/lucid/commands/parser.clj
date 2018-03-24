@@ -4,13 +4,9 @@
             [reduce-fsm :as fsm :refer [defsm-inc]]))
 
 (defn on-last-argument? [[{:keys [remaining-args]} _]]
-  (log/debug "remaining args:" remaining-args)
-  (let [res (>= 1 remaining-args)]
-    (log/debug (if-not res "not") "on last arg")
-    res))
+  (>= 1 remaining-args))
 
 (defn take-character [accumulator input _ _]
-  (log/debug "take-character" accumulator input)
   (update-in accumulator [:characters] conj input))
 
 (defn take-string [{:keys [characters] :as accumulator} _ _ _]
