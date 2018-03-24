@@ -1,7 +1,9 @@
 (ns lucid.commands.core
   (:require [clojure.string :as string]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [lucid.commands.parser :as p]))
 
+;; TODO add an options map as an optional third parameter (after the args vector)
 (defmacro defcommand
   "Defines a command, which is a variable-arity reducer over the state accumulator (see lucid.states).
    The body uses anaphora to accumulate side effect values without having to return them explicitly,
@@ -59,25 +61,32 @@
 (def command-table
   {"say" say})
 
-(defn parse [accumulator {:keys [message]} _ _]
-  (let [self-desc-id     (get-in accumulator [:login :descriptor-id])
-        [command & args] (string/split message #"\s+")
-        command-fn       (get command-table command)
+(defn parse [acc {:keys [message]} _ _]
+  (let [self-desc-id     (get-in acc [:login :descriptor-id])
+        send-to-self     #(update-in %1 [:side-effects :stream] conj
+                            {:destination self-desc-id :message %2})
 
-        offered-args     (count args)
-        command-args     (-> command-fn (meta) (:arity))
+        [command args]   (string/split message #"\s+" 2)
+        command-fn       (get command-table command)]
 
-        send-to-self     #(update-in accumulator [:side-effects :stream] conj
-                            {:destination self-desc-id :message %})]
-    (log/debug "Command, args, command-fn:" command args command-fn)
-    (cond
-      (not command-fn)
-      (send-to-self "No such command.")
-      
-      (not= offered-args command-args)
-      (send-to-self
-        (str "You sent " offered-args " arguments, while \"" command "\" requires " command-args "."))
+    ;; TODO remove me
+    (log/debug "Command, args:" command args)
 
-      :ok
-      (apply command-fn accumulator args))))
+    (if-not command-fn
+      (send-to-self acc "No such command.")
+      (let [command-arity    (-> command-fn (meta) (:arity))
+            {remaining-args :remaining-args
+             parsed-args     :strings}
+            (p/parse command-arity args)]
+
+        ;; TODO remove me
+        (log/debug "Parsed args, remaining args:" parsed-args remaining-args)
+
+        ;; TODO pull true case handler from command metadata
+        (if (pos? remaining-args)
+          (send-to-self acc
+            (str "'" command "' takes "
+              command-arity (if (> command-arity 1) " arguments" " argument")
+              " but you only provided " (count parsed-args) "."))
+          (apply command-fn acc parsed-args))))))
 
