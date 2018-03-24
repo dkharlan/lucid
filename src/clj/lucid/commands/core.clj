@@ -1,7 +1,7 @@
 (ns lucid.commands.core
   (:require [clojure.string :as string]
-            [taoensso.timbre :as log]
-            [lucid.commands.parser :as p]))
+            [lucid.commands.parser :as p]
+            [lucid.commands.communication :as comm]))
 
 ;; TODO add an options map as an optional third parameter (after the args vector)
 (defmacro defcommand
@@ -62,23 +62,8 @@
                @side-effects#)))
          {:arity ~(count args)}))))
 
-;; TODO infer correct ending punctuation
-(defcommand say [message]
-  (let [{:keys [states descriptors]} $server-info
-        speaker-name (or
-                       (get-in states [$self :value :login :character-name])
-                       $self)]
-    (doseq [destination-descriptor-id (keys descriptors)]
-      ($log! :info "Will be sending to" destination-descriptor-id)
-      ($sendln! destination-descriptor-id
-        (str
-          (if (= destination-descriptor-id $self) "You" speaker-name)
-          " said \""
-          message
-          "\"")))))
-
 (def command-table
-  {"say" say})
+  {"say" comm/say})
 
 (defn parse [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
