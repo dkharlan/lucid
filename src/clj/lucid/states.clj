@@ -128,8 +128,8 @@
     [[_ {:server-info _ :message password-regex}] :guard password-matches-initial?] -> {:action create-character} :logged-in
     [_]                                                                             -> {:action print-goodbye} :zombie]
    [:logged-in
-    [[_ {:server-info _ :message "quit"}]] -> {:action print-goodbye} :zombie
-    [_]                                    -> {:action cm/parse}      :logged-in]
+    [[_ {:server-info _ :message "quit"}]] -> {:action print-goodbye}     :zombie
+    [_]                                    -> {:action cm/command-action} :logged-in]
    [:zombie
     [_] -> :zombie]]
   :default-acc {:side-effects {:stream [] :db []}}

@@ -1,5 +1,5 @@
 (ns lucid.commands.communication
-  (:require [lucid.commands.core :refer [defcommand]]))
+  (:require [lucid.commands.helpers :refer [defcommand]]))
 
 ;; TODO infer correct ending punctuation
 (defcommand say [message]
