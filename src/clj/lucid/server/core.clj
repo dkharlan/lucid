@@ -6,9 +6,11 @@
             [manifold.stream :as s]
             [manifold.deferred :as d]
             [datomic.api :as db]
-            [lucid.server.telnet :refer [telnet-handler!]]
-            [lucid.server.http :refer [make-routes websocket-message-handler!]]
-            [lucid.server.colors :as colors]
+            [lucid.server.http :refer [make-routes]]
+
+            [lucid.server.telnet] ;; TODO so that the multimethod will be defined
+
+            [lucid.server.methods :as m]
             [lucid.states.core :as st]
             [lucid.states.helpers :as sth]
             [lucid.database :as ldb]))
@@ -26,42 +28,15 @@
   {:descriptor-id descriptor-id :message message})
 
 ;; TODO pull the welcome message from somewhere
-;; TODO the stream-type specific stuff should be pulled out of this namespace
 ;; TODO holy wow there are a lot of nested, closed over state buckets...
 (defn- accept-new-connection! [descriptors states message-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [connection-type  (:type info)
         descriptor-id    (uuid/v1)
         make-message*    (partial make-message descriptor-id)
-        message-handler! (case connection-type
-                           :tcp  (partial telnet-handler!
-                                   (atom []) ;; TODO may want to keep track of the leftovers atom someday
-                                   message-buffer
-                                   make-message*)
-                           :http (partial websocket-message-handler!
-                                   message-buffer
-                                   make-message*))
+        message-handler! (m/make-message-handler connection-type message-buffer make-message*)
         game             (st/game)
-        output-stream    (case connection-type
-                           :tcp  (let [output-stream (s/stream)]
-                                   (s/connect-via
-                                     output-stream
-                                     #(s/put! stream (-> % (colors/escape-color-codes) (str "\n")))
-                                     stream)
-                                   output-stream) 
-                           :http (let [output-stream    (s/stream)
-                                       http-color-state (atom
-                                                          (colors/http-colors {:chars [] :strs [] :lines []}))]
-                                   (s/consume 
-                                     (fn [message]
-                                       (let [{{:keys [lines]} :value :as next-state}
-                                             (sth/reduce-fsm @http-color-state (-> message (vec) (conj :end)))]
-                                         (reset! http-color-state
-                                           (assoc-in next-state [:value :lines] []))
-                                         (doseq [line lines]
-                                           (s/put! stream (prn-str line)))))
-                                     output-stream)
-                                   output-stream))]
+        output-stream    (m/make-output-stream connection-type stream)]
     (s/on-closed stream (partial close! descriptors states descriptor-id info))
     (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id output-stream info))
@@ -171,7 +146,7 @@
         message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
         acceptor       (partial accept-new-connection! descriptors states message-buffer)
         tcp-acceptor   (fn [stream info]
-                         (acceptor stream (assoc info :type :tcp)))
+                         (acceptor stream (assoc info :type :telnet)))
         http-acceptor  (fn [stream info]
                          (acceptor stream (assoc info :type :http)))
         tcp-server     (delay (tcp/start-server tcp-acceptor {:port tcp-port}))

@@ -1,8 +1,11 @@
 (ns lucid.server.telnet
-  (:require [automat.core :as a]
-            [manifold.stream :as s]
+  (:require [clojure.string :as string]
             [taoensso.timbre :as log]
-            [lucid.util :as util]))
+            [automat.core :as a]
+            [manifold.stream :as s]
+            [lucid.util :as util]
+            [lucid.server.methods :as m]
+            [lucid.server.colors :as colors]))
 
 ;; the first of two state machines needed will be to keep track of the telnet protocol state.
 ;; for now, this is going to just ignore everything
@@ -67,9 +70,39 @@
 
 (def ^:private lines (partial a/advance lines-fsm))
 
+(defn- escape-color-codes [message]
+  (string/join
+    (loop [input-chars  message
+           output-chars []]
+      (if (empty? input-chars)
+        output-chars
+        (let [[next & others]   input-chars
+              escape?           (= next colors/color-code-start)
+              next-input-chars  (if escape?
+                                  (rest others)
+                                  others)
+              next-output-chars (if escape?
+                                  (if-let [escape-sequence (->> others
+                                                             (first)
+                                                             (conj '(:tcp))
+                                                             (get-in colors/color-codes))]
+                                    (into output-chars escape-sequence)
+                                    output-chars)
+                                  (conj output-chars next))]
+          (recur next-input-chars next-output-chars))))))
+
+(defmethod m/make-output-stream :telnet [_ stream]
+  (let [output-stream (s/stream)]
+    (s/connect-via
+      output-stream
+      #(s/put! stream (-> % (escape-color-codes) (str "\n")))
+      stream)
+    output-stream))
+
+;; TODO combine these last two
 ;; TODO how to prevent preferential treatment of socket streams? figure out which thread this is called on
 ;; TODO think about error handling
-(defn telnet-handler! [leftovers buffer transform message-bytes]
+(defn- telnet-handler! [leftovers buffer transform message-bytes]
   (try
     (let [{:keys [strs chars]} (->> message-bytes
                                  (concat @leftovers)
@@ -85,4 +118,11 @@
     (catch Exception ex
       (log/error ex)
       (throw ex))))
+
+;; TODO may want to keep track of the leftovers atom someday
+(defmethod m/make-message-handler :telnet [connection-type message-buffer message-xform]
+  (partial telnet-handler!
+    (atom [])
+    message-buffer
+    message-xform))
 
