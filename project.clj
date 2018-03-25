@@ -2,6 +2,7 @@
   :description "A flexible MUD framework written in Clojure"
   :dependencies [[org.clojure/clojure "1.9.0"]
                  [org.clojure/clojurescript "1.9.946"]
+                 [me.raynes/fs "1.4.6"]
                  [clj-time "0.14.2"]
                  [automat "0.2.4"]
                  [reduce-fsm "0.1.4"]
