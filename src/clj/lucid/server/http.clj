@@ -94,3 +94,10 @@
     message-buffer
     message-xform))
 
+(defn make-server [acceptor port]
+  (let [acceptor #(acceptor %1 (assoc %2 :type :http))]
+    (delay
+      (-> acceptor
+        (make-routes)
+        (http/start-server {:port port})))))
+

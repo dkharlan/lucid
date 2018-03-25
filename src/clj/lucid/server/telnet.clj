@@ -5,7 +5,8 @@
             [manifold.stream :as s]
             [lucid.util :as util]
             [lucid.server.methods :as m]
-            [lucid.server.colors :as colors]))
+            [lucid.server.colors :as colors]
+            [aleph.tcp :as tcp]))
 
 ;; the first of two state machines needed will be to keep track of the telnet protocol state.
 ;; for now, this is going to just ignore everything
@@ -120,9 +121,14 @@
       (throw ex))))
 
 ;; TODO may want to keep track of the leftovers atom someday
-(defmethod m/make-message-handler :telnet [connection-type message-buffer message-xform]
+(defmethod m/make-message-handler :telnet [_ message-buffer message-xform]
   (partial telnet-handler!
     (atom [])
     message-buffer
     message-xform))
+
+(defn make-server [acceptor port]
+  (let [acceptor #(acceptor %1 (assoc %2 :type :telnet))]
+    (delay
+      (tcp/start-server acceptor {:port port}))))
 
