@@ -1,7 +1,8 @@
 (ns lucid.states
-  (:require [reduce-fsm :refer [defsm-inc] :as fsm]
+  (:require [taoensso.timbre :as log]
+            [reduce-fsm :refer [defsm-inc] :as fsm]
             [lucid.characters :as chars]
-            [taoensso.timbre :as log]))
+            [lucid.commands.core :as cm]))
 
 ;;
 ;; states can keep anything in their accumulator, but the :side-effects entry is treated
@@ -103,21 +104,6 @@
 (defn print-goodbye [accumulator & _]
   (sendln-to-self accumulator "Goodbye."))
 
-(defn echo-message [accumulator {:keys [server-info message]} & _]
-  (let [{:keys [descriptors states]} server-info
-        source-descriptor-id         (get-in accumulator [:login :descriptor-id])
-        source-name                  (or
-                                        (get-in states [source-descriptor-id :value :login :character-name])
-                                        source-descriptor-id)]
-    (update-in accumulator [:side-effects :stream] concat
-      (for [destination-descriptor-id (keys descriptors)]
-        {:destination destination-descriptor-id 
-         :message (str
-                    (if (= destination-descriptor-id source-descriptor-id) "You" source-name)
-                    " said \""
-                    message
-                    "\"")}))))
-
 (defn character-exists? [[_ {character-name :message}]]
   (chars/character-exists? character-name))
 
@@ -142,8 +128,8 @@
     [[_ {:server-info _ :message password-regex}] :guard password-matches-initial?] -> {:action create-character} :logged-in
     [_]                                                                             -> {:action print-goodbye} :zombie]
    [:logged-in
-    [[_ {:server-info _ :message "quit"}]] -> {:action print-goodbye} :zombie
-    [_]                                    -> {:action echo-message} :logged-in]
+    [[_ {:server-info _ :message "quit"}]] -> {:action print-goodbye}     :zombie
+    [_]                                    -> {:action cm/command-action} :logged-in]
    [:zombie
     [_] -> :zombie]]
   :default-acc {:side-effects {:stream [] :db []}}
