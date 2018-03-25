@@ -8,7 +8,6 @@
                        (get-in states [$self :value :login :character-name])
                        $self)]
     (doseq [destination-descriptor-id (keys descriptors)]
-      ($log! :info "Will be sending to" destination-descriptor-id)
       ($sendln! destination-descriptor-id
         (str
           (if (= destination-descriptor-id $self) "You" speaker-name)

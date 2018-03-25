@@ -5,12 +5,12 @@
             [aleph.http :as http]
             [manifold.stream :as s]
             [manifold.deferred :as d]
-            [reduce-fsm :as fsm]
             [datomic.api :as db]
             [lucid.server.telnet :refer [telnet-handler!]]
             [lucid.server.http :refer [make-routes websocket-message-handler!]]
             [lucid.server.colors :as colors]
-            [lucid.states :as st]
+            [lucid.states.core :as st]
+            [lucid.states.helpers :as sth]
             [lucid.database :as ldb]))
 
 (defn- make-descriptor [id stream info]
@@ -24,12 +24,6 @@
 
 (defn- make-message [descriptor-id message]
   {:descriptor-id descriptor-id :message message})
-
-(defn inc-fsm [state input]
-  (fsm/fsm-event state input))
-
-(defn reduce-fsm [state coll]
-  (reduce inc-fsm state coll))
 
 ;; TODO pull the welcome message from somewhere
 ;; TODO the stream-type specific stuff should be pulled out of this namespace
@@ -61,7 +55,7 @@
                                    (s/consume 
                                      (fn [message]
                                        (let [{{:keys [lines]} :value :as next-state}
-                                             (reduce-fsm @http-color-state (-> message (vec) (conj :end)))]
+                                             (sth/reduce-fsm @http-color-state (-> message (vec) (conj :end)))]
                                          (reset! http-color-state
                                            (assoc-in next-state [:value :lines] []))
                                          (doseq [line lines]
@@ -72,7 +66,7 @@
     (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id output-stream info))
     (swap! states assoc descriptor-id
-      (inc-fsm game {:descriptor-id descriptor-id}))
+      (sth/inc-fsm game {:descriptor-id descriptor-id}))
     (s/put! output-stream "Welcome! What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
@@ -85,7 +79,7 @@
 
 (defn- event [[descriptor-id input state]]
   (log/trace "Previous state:" state)
-  [descriptor-id input (inc-fsm state input)])
+  [descriptor-id input (sth/inc-fsm state input)])
 
 (defn- affect-streams! [[descriptor-id
                          {{:keys [descriptors]} :server-info :as input}
