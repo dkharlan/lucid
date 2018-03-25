@@ -1,0 +1,16 @@
+[
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :room/id
+  :db/valueType           :db.type/uuid
+  :db/cardinality         :db.cardinality/one
+  :db/doc                 "A room's UUID"
+  :db/unique              :db.unique/identity
+  :db.install/_attribute  :db.part/db}
+
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :room/description
+  :db/valueType           :db.type/string
+  :db/cardinality         :db.cardinality/one
+  :db/doc                 "A room's description"
+  :db.install/_attribute  :db.part/db}
+ ]

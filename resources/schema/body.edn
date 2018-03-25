@@ -1,17 +1,16 @@
 [
  {:db/id                  #db/id[:db.part/db]
-  :db/ident               :character/name
-  :db/valueType           :db.type/string
+  :db/ident               :body/id
+  :db/valueType           :db.type/uuid
   :db/cardinality         :db.cardinality/one
-  :db/doc                 "A character's name"
+  :db/doc                 "A body's UUID"
   :db/unique              :db.unique/identity
   :db.install/_attribute  :db.part/db}
 
  {:db/id                  #db/id[:db.part/db]
-  :db/ident               :character/password-hash-and-salt
-  :db/valueType           :db.type/string
+  :db/ident               :body/location
+  :db/valueType           :db.type/ref
   :db/cardinality         :db.cardinality/one
-  :db/doc                 "A character's password hash and salt"
+  :db/doc                 "The room (see room.edn) where this body is located"
   :db.install/_attribute  :db.part/db}
-]
-
+ ]
