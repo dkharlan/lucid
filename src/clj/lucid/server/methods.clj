@@ -1,10 +1,10 @@
 (ns lucid.server.methods)
 
 (defmulti make-output-stream
-  (fn [connection-type _]
+  (fn [connection-type _ _]
     connection-type))
 
-(defmethod make-output-stream :default [connection-type _]
+(defmethod make-output-stream :default [connection-type _ _]
   (throw
     (UnsupportedOperationException.
       (str "Unkown connection type " connection-type))))

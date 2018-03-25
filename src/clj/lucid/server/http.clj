@@ -68,7 +68,7 @@
     (GET "/connect" request
       (websocket-handler new-connection-handler! request))))
 
-(defmethod m/make-output-stream :http [_ stream]
+(defmethod m/make-output-stream :http [_ stream close-handler]
   (let [output-stream    (s/stream)
         http-color-state (atom
                            (http-colors {:chars [] :strs [] :lines []}))]
@@ -81,6 +81,10 @@
           (doseq [line lines]
             (s/put! stream (prn-str line)))))
       output-stream)
+    (s/on-closed output-stream
+      (fn []
+        (close-handler)
+        (s/close! stream)))
     output-stream))
 
 ;; TODO combine these last two

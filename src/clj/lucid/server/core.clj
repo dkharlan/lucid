@@ -32,9 +32,9 @@
         descriptor-id    (uuid/v1)
         make-message*    (partial make-message descriptor-id)
         message-handler! (m/make-message-handler connection-type message-buffer make-message*)
-        game             (st/game)
-        output-stream    (m/make-output-stream connection-type stream)]
-    (s/on-closed stream (partial close! descriptors states descriptor-id info))
+        closed-handler!  (partial close! descriptors states descriptor-id info)
+        output-stream    (m/make-output-stream connection-type stream closed-handler!)
+        game             (st/game)]
     (s/consume message-handler! stream)
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id output-stream info))
     (swap! states assoc descriptor-id
@@ -42,11 +42,14 @@
     (s/put! output-stream "Welcome! What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
-(defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors]
+(defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors db]
   (log/trace (format "Message from descriptor %s:" descriptor-id) message)
-  (let [state (get states descriptor-id)
-        input {:server-info {:descriptors descriptors :states states}
-               :message     message}]
+  (let [state       (get states descriptor-id)
+        server-info {:descriptors descriptors
+                     :states      states
+                     :db          db}
+        input       {:server-info server-info
+                     :message     message}]
     [descriptor-id input state]))
 
 (defn- event [[descriptor-id input state]]
@@ -81,6 +84,7 @@
 ;; TODO see if there's a more elegant way to do this
 (defn- transition-state! [[descriptor-id _ {:keys [state] :as next-state}] states descriptors]
   ;; TODO do this for all side effect types instead of explicitly for each
+  (log/debug (get-in @descriptors [descriptor-id :stream]))
   (if-not (= state :zombie)
     (swap! states assoc descriptor-id
       (-> next-state
@@ -91,7 +95,7 @@
       (log/trace "Trying to remove session descriptor")
       (if-let [character-name (get-in next-state [:value :login :character-name])]
         (log/info "Logging" (str "\"" character-name "\"") "out"))
-      (s/close! (get-in descriptors [descriptor-id :stream])))))
+      (s/close! (get-in @descriptors [descriptor-id :stream])))))
 
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
 (defn- collect! [stream]
@@ -113,7 +117,7 @@
             (log/trace "Message info:" message-info)
             (try
               (-> message-info 
-                (bundle-message$ @states @descriptors) 
+                (bundle-message$ @states @descriptors (db/db db-connection)) 
                 event ;; <---- the stateless part
                 affect-streams!
                 (persist-transactions! db-connection)
@@ -126,9 +130,10 @@
           (recur))))
   (log/info "Update thread finished cleaning up."))
 
-(defn- server* [descriptors states message-buffer tcp-server http-server update-thread updater-signal]
+(defn- server* [descriptors states db-connection message-buffer tcp-server http-server update-thread updater-signal]
   {:descriptors    descriptors
    :states         states
+   :db-connection  db-connection
    :message-buffer message-buffer
    :tcp-server     tcp-server
    :http-server    http-server
@@ -148,7 +153,7 @@
                          (or (:http ports) 8080))
         tcp-server     (telnet/make-server acceptor
                          (or (:tcp ports) 4000))]
-    (server* descriptors states message-buffer tcp-server http-server update-thread updater-signal)))
+    (server* descriptors states db-connection message-buffer tcp-server http-server update-thread updater-signal)))
 
 (defn start! [{:keys [tcp-server http-server update-thread] :as this}]
   (log/info "Launching update thread...")

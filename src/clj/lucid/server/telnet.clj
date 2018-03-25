@@ -92,12 +92,13 @@
                                   (conj output-chars next))]
           (recur next-input-chars next-output-chars))))))
 
-(defmethod m/make-output-stream :telnet [_ stream]
+(defmethod m/make-output-stream :telnet [_ stream close-handler]
   (let [output-stream (s/stream)]
     (s/connect-via
       output-stream
       #(s/put! stream (-> % (escape-color-codes) (str "\n")))
       stream)
+    (s/on-closed output-stream close-handler)
     output-stream))
 
 ;; TODO combine these last two

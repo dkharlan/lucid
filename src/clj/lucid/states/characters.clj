@@ -67,9 +67,9 @@
 (defn print-goodbye [accumulator & _]
   (h/queue-stream-send-to-self accumulator "Goodbye."))
 
-(defn character-exists? [[_ {character-name :message}]]
-  (chars/character-exists? character-name))
+(defn character-exists? [[_ {character-name :message {:keys [db]} :server-info}]]
+  (chars/character-exists? db character-name))
 
-(defn password-is-valid? [[{{:keys [character-name]} :login} {password :message}]]
-  (chars/password-is-valid? character-name password))
+(defn password-is-valid? [[{{:keys [character-name]} :login} {password :message {:keys [db]} :server-info}]]
+  (chars/password-is-valid? db character-name password))
 

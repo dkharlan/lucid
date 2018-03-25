@@ -21,10 +21,16 @@
     (filter #(= ".edn" (extension %)))
     (mapcat read-schema)))
 
+;; TODO should change this to migrate! or something like that
 (defn reset! [uri]
   (d/delete-database uri)
   (d/create-database uri)
   (let [schema-transaction (read-schemas "schema")
         connection (d/connect uri)]
-    @(d/transact connection schema-transaction)))
+    @(d/transact connection schema-transaction)
+    @(d/transact connection
+       [{:db/id            (d/tempid :db.part/user)
+         :room/name        "The Starting Room"
+         :room/tag         :character/starting-location
+         :room/description "This is the starting room."}])))
 
