@@ -57,7 +57,7 @@
     (-> accumulator
       (update-in [:login] dissoc :initial-password)
       (h/queue-stream-send-to-self (str "Thanks for creating your character, " character-name "!"))
-      (h/queue-db-transaction (chars/create-character character-name password))
+      (h/queue-db-transaction (chars/make-character character-name password))
       (h/queue-log-event :info
         "Descriptor" descriptor-id "created character" (str "\"" character-name "\"")))))
 
