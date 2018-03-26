@@ -20,3 +20,6 @@
 (defn queue-db-transaction [accumulator txn]
   (update-in accumulator [:side-effects :db] conj txn))
 
+(defn queue-db-transactions [accumulator txns]
+  (update-in accumulator [:side-effects :db] (comp vec concat) txns))
+
