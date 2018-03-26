@@ -1,0 +1,5 @@
+[
+ {:room/name        "The Starting Room"
+  :room/tag         :character/starting-location
+  :room/description "This is the starting room."}
+ ]

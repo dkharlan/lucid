@@ -22,7 +22,7 @@
    (init-lucid! true))
   ([reset-db?]
    (if reset-db?
-     (ldb/reset! ldb/uri))
+     (ldb/reset-db! ldb/uri))
    (if $server
      (srv/stop! $server))
    (def $server
