@@ -60,7 +60,7 @@
                          {{:keys [descriptors]} :server-info :as input}
                          {{{stream-side-effects :stream} :side-effects} :value :as next-state}]]
   (when-not (empty? stream-side-effects)
-    (log/trace "Stream messages:" stream-side-effects)
+    (log/trace "Stream messages:" (vec stream-side-effects))
     (doseq [{:keys [destination message]} stream-side-effects]
       (let [destination-stream (get-in descriptors [destination :stream])]
         (s/put! destination-stream  message))))
@@ -84,7 +84,6 @@
 ;; TODO see if there's a more elegant way to do this
 (defn- transition-state! [[descriptor-id _ {:keys [state] :as next-state}] states descriptors]
   ;; TODO do this for all side effect types instead of explicitly for each
-  (log/debug (get-in @descriptors [descriptor-id :stream]))
   (if-not (= state :zombie)
     (swap! states assoc descriptor-id
       (-> next-state
@@ -109,9 +108,7 @@
 (defn update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
   (loop []
-      (log/trace "Update loop")
       (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
-        (log/trace "Updater-signal:" signal)
         (when (and (not= ::shutdown signal) (not (nil? signal)))
           (doseq [message-info (collect! message-buffer)]
             (log/trace "Message info:" message-info)
