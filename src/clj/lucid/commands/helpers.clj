@@ -31,7 +31,7 @@
        (with-meta
          (fn ~(into [accumulator-sym server-info-sym] args) 
            (let [side-effects#
-                 (atom {})
+                 (atom {:db [] :stream [] :log []})
 
                  ~'$self
                  (get-in ~accumulator-sym [:login :descriptor-id])
