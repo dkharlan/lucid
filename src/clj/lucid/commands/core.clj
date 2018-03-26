@@ -1,10 +1,13 @@
 (ns lucid.commands.core
   (:require [clojure.string :as string]
             [lucid.commands.parser :as p]
-            [lucid.commands.communication :as comm]))
+            [lucid.commands.communication :as comm]
+            [lucid.commands.perception :as per]))
 
+;; TODO this breaks auto-updating via the REPL; use var lookups?
 (def command-table
-  {"say" comm/say})
+  {"say"  comm/say
+   "look" per/look})
 
 (defn command-action [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
