@@ -27,5 +27,7 @@
             (str "'" command "' takes "
               command-arity (if (> command-arity 1) " arguments" " argument")
               " but you only provided " (count parsed-args) "."))
-          (apply command-fn acc server-info parsed-args))))))
+          (->> parsed-args
+            (take command-arity)
+            (apply command-fn acc server-info)))))))
 
