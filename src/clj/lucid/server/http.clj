@@ -85,6 +85,9 @@
       (fn []
         (close-handler)
         (s/close! stream)))
+    (s/on-closed stream
+      (fn []
+        (s/close! output-stream)))
     output-stream))
 
 ;; TODO combine these last two
