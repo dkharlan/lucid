@@ -51,3 +51,7 @@
     @(d/transact connection schema-transactions)
     @(d/transact connection data-transactions)))
 
+(defn speculate [db txns]
+  (:db-after
+   (d/with db txns)))
+

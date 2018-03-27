@@ -1,5 +1,6 @@
 (ns lucid.commands.core
   (:require [clojure.string :as string]
+            [lucid.database :refer [speculate]]
             [lucid.commands.parser :as p]
             [lucid.commands.communication :as comm]
             [lucid.commands.perception :as per]))
@@ -30,4 +31,12 @@
           (->> parsed-args
             (take command-arity)
             (apply command-fn acc server-info)))))))
+
+(defn call-command [accumulator command-name server-info & command-args]
+  (let [command-fn   (var-get (get command-table command-name))
+        pending-txns (get-in accumulator [:side-effects :db])]
+    (apply command-fn
+      accumulator
+      (update server-info :db speculate pending-txns)
+      command-args)))
 
