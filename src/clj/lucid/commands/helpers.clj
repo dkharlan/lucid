@@ -58,7 +58,7 @@
              (let [side-effects-value# @side-effects#]
                (log/trace ~(str "Side effects for '" (name command-name) "' command:") side-effects-value#)
                (update-in ~accumulator-sym [:side-effects]
-                 #(merge-with concat %1 %2)
+                 #(merge-with (comp vec concat) %1 %2)
                  side-effects-value#))))
          {:arity ~(count args)}))))
 
