@@ -4,10 +4,9 @@
             [lucid.commands.communication :as comm]
             [lucid.commands.perception :as per]))
 
-;; TODO this breaks auto-updating via the REPL; use var lookups?
 (def command-table
-  {"say"  comm/say
-   "look" per/look})
+  {"say"  #'comm/say
+   "look" #'per/look})
 
 (defn command-action [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
@@ -15,7 +14,7 @@
                             {:destination self-desc-id :message %2})
 
         [command args]   (string/split message #"\s+" 2)
-        command-fn       (get command-table command)]
+        command-fn       (var-get (get command-table command))]
     (if-not command-fn
       (send-to-self acc "No such command.")
       (let [command-arity    (-> command-fn (meta) (:arity))
