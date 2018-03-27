@@ -1,7 +1,8 @@
 (ns lucid.states.characters
   (:require [lucid.states.helpers :as h]
             [lucid.characters :as chars]
-            [lucid.commands.core :as cm]))
+            [lucid.commands.core :as cm]
+            [taoensso.timbre :as log]))
 
 (def character-name-regex #"^[A-z]{3,}$")
 (def password-regex #"^[A-Za-z\d]{8,}$")
@@ -42,6 +43,9 @@
       (h/queue-log-event :warn
         remote-addr "failed password authentication for" (str "\"" character-name "\"")))))
 
+(defn show-prompt [accumulator]
+  (h/queue-stream-send-to-self accumulator "$!\n> "))
+
 (defn log-character-in [accumulator {{:keys [descriptors] :as server-info} :server-info} _ _]
   (let [descriptor-id  (get-in accumulator [:login :descriptor-id])
         character-name (get-in accumulator [:login :character-name])
@@ -50,7 +54,8 @@
       (h/queue-stream-send-to-self "Welcome!")   ;; TODO replace with motd
       (h/queue-log-event :info
         "Character" (str "\"" character-name "\"") "logged in from" remote-addr)
-      (cm/call-command "look" server-info))))
+      (cm/call-command "look" server-info)
+      (show-prompt))))
 
 (defn create-character [accumulator input prev-state next-state]
   (let [{character-name :character-name password :initial-password} (:login accumulator)
@@ -74,4 +79,9 @@
 
 (defn password-is-valid? [[{{:keys [character-name]} :login} {password :message {:keys [db]} :server-info}]]
   (chars/password-is-valid? db character-name password))
+
+(defn handle-command [accumulator input prev-state next-state]
+  (-> accumulator
+    (cm/command-action input prev-state next-state)
+    (show-prompt)))
 
