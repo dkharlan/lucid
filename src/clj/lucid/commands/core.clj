@@ -1,10 +1,13 @@
 (ns lucid.commands.core
   (:require [clojure.string :as string]
+            [lucid.database :refer [speculate]]
             [lucid.commands.parser :as p]
-            [lucid.commands.communication :as comm]))
+            [lucid.commands.communication :as comm]
+            [lucid.commands.perception :as per]))
 
 (def command-table
-  {"say" comm/say})
+  {"say"  #'comm/say
+   "look" #'per/look})
 
 (defn command-action [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
@@ -12,7 +15,7 @@
                             {:destination self-desc-id :message %2})
 
         [command args]   (string/split message #"\s+" 2)
-        command-fn       (get command-table command)]
+        command-fn       (var-get (get command-table command))]
     (if-not command-fn
       (send-to-self acc "No such command.")
       (let [command-arity    (-> command-fn (meta) (:arity))
@@ -25,5 +28,15 @@
             (str "'" command "' takes "
               command-arity (if (> command-arity 1) " arguments" " argument")
               " but you only provided " (count parsed-args) "."))
-          (apply command-fn acc server-info parsed-args))))))
+          (->> parsed-args
+            (take command-arity)
+            (apply command-fn acc server-info)))))))
+
+(defn call-command [accumulator command-name server-info & command-args]
+  (let [command-fn   (var-get (get command-table command-name))
+        pending-txns (get-in accumulator [:side-effects :db])]
+    (apply command-fn
+      accumulator
+      (update server-info :db speculate pending-txns)
+      command-args)))
 

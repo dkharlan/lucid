@@ -42,24 +42,26 @@
       (h/queue-log-event :warn
         remote-addr "failed password authentication for" (str "\"" character-name "\"")))))
 
-(defn log-character-in [accumulator {{:keys [descriptors]} :server-info} _ _]
+(defn log-character-in [accumulator {{:keys [descriptors] :as server-info} :server-info} _ _]
   (let [descriptor-id  (get-in accumulator [:login :descriptor-id])
         character-name (get-in accumulator [:login :character-name])
         remote-addr    (get-in descriptors [descriptor-id :info :remote-addr])]
     (-> accumulator
-      (h/queue-stream-send-to-self "Welcome!")
+      (h/queue-stream-send-to-self "Welcome!")   ;; TODO replace with motd
       (h/queue-log-event :info
-        "Character" (str "\"" character-name "\"") "logged in from" remote-addr))))
+        "Character" (str "\"" character-name "\"") "logged in from" remote-addr)
+      (cm/call-command "look" server-info))))
 
-(defn create-character [accumulator _ _ _]
+(defn create-character [accumulator input prev-state next-state]
   (let [{character-name :character-name password :initial-password} (:login accumulator)
          descriptor-id (get-in accumulator [:login :descriptor-id])]
     (-> accumulator
       (update-in [:login] dissoc :initial-password)
       (h/queue-stream-send-to-self (str "Thanks for creating your character, " character-name "!"))
-      (h/queue-db-transaction (chars/create-character character-name password))
+      (h/queue-db-transaction (chars/make-character character-name password))
       (h/queue-log-event :info
-        "Descriptor" descriptor-id "created character" (str "\"" character-name "\"")))))
+        "Descriptor" descriptor-id "created character" (str "\"" character-name "\""))
+      (log-character-in input prev-state next-state))))
 
 (defn add-descriptor-id [accumulator {:keys [descriptor-id]} & _]
   (assoc-in accumulator [:login :descriptor-id] descriptor-id))

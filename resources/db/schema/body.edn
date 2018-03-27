@@ -1,13 +1,5 @@
 [
  {:db/id                  #db/id[:db.part/db]
-  :db/ident               :body/id
-  :db/valueType           :db.type/uuid
-  :db/cardinality         :db.cardinality/one
-  :db/doc                 "A body's UUID"
-  :db/unique              :db.unique/identity
-  :db.install/_attribute  :db.part/db}
-
- {:db/id                  #db/id[:db.part/db]
   :db/ident               :body/location
   :db/valueType           :db.type/ref
   :db/cardinality         :db.cardinality/one

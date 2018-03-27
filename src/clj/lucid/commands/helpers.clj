@@ -1,4 +1,5 @@
-(ns lucid.commands.helpers)
+(ns lucid.commands.helpers
+  (:require [taoensso.timbre :as log]))
 
 ;; TODO add an options map as an optional third parameter (after the args vector)
 (defmacro defcommand
@@ -24,14 +25,14 @@
    $server-info
    A map containing information about the current server states.  See lucid.server.core for details.
   "
-  [name args & body]
+  [command-name args & body]
   (let [accumulator-sym (gensym "accumulator")
         server-info-sym (gensym "server-info")]
-    `(def ~name
+    `(def ~command-name
        (with-meta
          (fn ~(into [accumulator-sym server-info-sym] args) 
            (let [side-effects#
-                 (atom {})
+                 (atom {:db [] :stream [] :log []})
 
                  ~'$self
                  (get-in ~accumulator-sym [:login :descriptor-id])
@@ -54,8 +55,10 @@
                    (swap! side-effects# update-in [:db] concat transactions#))]
 
              ~@body
-             (update-in ~accumulator-sym [:side-effects]
-               #(merge-with concat %1 %2)
-               @side-effects#)))
+             (let [side-effects-value# @side-effects#]
+               (log/trace ~(str "Side effects for '" (name command-name) "' command:") side-effects-value#)
+               (update-in ~accumulator-sym [:side-effects]
+                 #(merge-with concat %1 %2)
+                 side-effects-value#))))
          {:arity ~(count args)}))))
 
