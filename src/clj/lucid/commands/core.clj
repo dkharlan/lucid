@@ -2,12 +2,14 @@
   (:require [clojure.string :as string]
             [lucid.database :refer [speculate]]
             [lucid.commands.parser :as p]
-            [lucid.commands.communication :as comm]
-            [lucid.commands.perception :as per]))
+            [lucid.commands.perception :as perc]
+            [lucid.commands.information :as info]
+            [lucid.commands.communication :as comm]))
 
 (def command-table
   {"say"  #'comm/say
-   "look" #'per/look})
+   "look" #'perc/look
+   "who"  #'info/who})
 
 (defn command-action [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
