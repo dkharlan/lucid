@@ -2,14 +2,23 @@
   (:require [clojure.string :as string]
             [lucid.database :refer [speculate]]
             [lucid.commands.parser :as p]
+            [lucid.commands.helpers :refer [defcommand]]
             [lucid.commands.perception :as perc]
             [lucid.commands.information :as info]
             [lucid.commands.communication :as comm]))
 
+(declare commands)
+
 (def command-table
-  {"say"  #'comm/say
-   "look" #'perc/look
-   "who"  #'info/who})
+  {"say"      #'comm/say
+   "look"     #'perc/look
+   "who"      #'info/who
+   "commands" #'commands})
+
+(defcommand commands []
+  ($sendln! $self "$!The following commands are available:\n")
+  (doseq [command-name (keys command-table)]
+    ($sendln! $self (str "  $c" command-name "$!"))))
 
 (defn command-action [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
