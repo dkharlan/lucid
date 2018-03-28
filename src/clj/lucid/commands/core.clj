@@ -16,6 +16,8 @@
    "commands" #'commands})
 
 (defcommand commands []
+  {:help {:short "Lists available commands"
+          :long  "$CCOMMANDS$! Lists the commands your player can use (not necessarily every command)."}}
   ($sendln! $self "$!The following commands are available:\n")
   (doseq [command-name (keys command-table)]
     ($sendln! $self (str "  $c" command-name "$!"))))

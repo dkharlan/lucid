@@ -5,6 +5,8 @@
 
 ;; TODO see if these queries can be combined
 (defcommand look []
+  {:help {:short "Describes the current room and its contents"
+          :long  "$CLOOK$! shows you the room you're in and all the objects it contains."}}
   (let [{:keys [states db]}
         $server-info
 
