@@ -19,8 +19,25 @@
   {:help {:short "Lists available commands"
           :long  "$CCOMMANDS$! Lists the commands your player can use (not necessarily every command)."}}
   ($sendln! $self "$!The following commands are available:\n")
-  (doseq [command-name (keys command-table)]
-    ($sendln! $self (str "  $c" command-name "$!"))))
+  (let [commands
+        (->> command-table
+          (vals)
+          (map var-get)
+          (map meta)
+          (sort-by :command-name))
+
+        command-name-max-length
+        (->> commands
+          (map :command-name)
+          (map count)
+          (apply max))]
+
+    (doseq [{:keys [command-name help]} commands]
+      ($sendln! $self
+        (str
+          (format (str "  $c%-" command-name-max-length "s$!") command-name)
+          " - "
+          (:short help))))))
 
 (defn command-action [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
