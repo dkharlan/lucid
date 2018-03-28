@@ -8,17 +8,58 @@
             [lucid.commands.communication :as comm]))
 
 (declare commands)
+(declare help)
 
 (def command-table
   {"say"      #'comm/say
    "look"     #'perc/look
    "who"      #'info/who
-   "commands" #'commands})
+   "commands" #'commands
+   "help"     #'help})
 
 (defcommand commands []
+  {:help {:short "Lists available commands"
+          :long  "$CCOMMANDS$! Lists the commands your player can use (not necessarily every command)."}}
   ($sendln! $self "$!The following commands are available:\n")
-  (doseq [command-name (keys command-table)]
-    ($sendln! $self (str "  $c" command-name "$!"))))
+  (let [commands
+        (->> command-table
+          (vals)
+          (map var-get)
+          (map meta)
+          (sort-by :command-name))
+
+        command-name-max-length
+        (->> commands
+          (map :command-name)
+          (map count)
+          (apply max))]
+
+    (doseq [{:keys [command-name help]} commands]
+      ($sendln! $self
+        (str
+          (format (str "  $c%-" command-name-max-length "s$!") command-name)
+          " - "
+          (:short help))))))
+
+;; TODO expand to more sources than just the command table
+(defcommand help [command]
+  {:help {:short "Explain a command"
+          :long  "$CHELP$! describes a command and its arguments."}}
+  (let [{:keys [help argspec] :as command-data}
+        (-> command-table
+          (get command)
+          (var-get)
+          (meta))]
+
+    (if-not command-data
+      ($sendln! $self (str "No such command as '" command "'."))
+      (let [args (->> argspec
+                   (map name)
+                   (interpose " ")
+                   (apply str))]
+        ($sendln! $self (:long help))
+        ($sendln! $self "\n$WSyntax:$!")
+        ($sendln! $self (str "  $C" command "$w " args "$!"))))))
 
 (defn command-action [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])

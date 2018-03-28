@@ -3,6 +3,8 @@
             [lucid.commands.helpers :refer [defcommand]]))
 
 (defcommand who []
+  {:help {:short "Lists online players"
+          :long  "$CWHO$! shows you the names of all characters that are currently playing."}}
   (let [players
         (->> $server-info
           (:states)

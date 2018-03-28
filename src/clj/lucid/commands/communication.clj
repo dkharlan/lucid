@@ -4,6 +4,8 @@
 
 ;; TODO infer correct ending punctuation?
 (defcommand say [message]
+  {:help {:short "Speak to nearby characters"
+          :long  "$CSAY$! allows you to speak to characters in the same room as you."}}
   (let [{:keys [states db]}
         $server-info
 
