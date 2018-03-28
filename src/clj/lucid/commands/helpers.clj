@@ -25,8 +25,13 @@
    $server-info
    A map containing information about the current server states.  See lucid.server.core for details.
   "
-  [command-name args & body]
-  (let [accumulator-sym (gensym "accumulator")
+  [command-name args & maybe-options-and-body]
+  (let [has-options?    (map? (first maybe-options-and-body))
+        options         (if has-options? (first maybe-options-and-body))
+        body            (if has-options?
+                          (rest maybe-options-and-body)
+                          maybe-options-and-body)
+        accumulator-sym (gensym "accumulator")
         server-info-sym (gensym "server-info")]
     `(def ~command-name
        (with-meta
@@ -60,5 +65,9 @@
                (update-in ~accumulator-sym [:side-effects]
                  #(merge-with (comp vec concat) %1 %2)
                  side-effects-value#))))
-         {:arity ~(count args)}))))
+         (merge
+           (or ~options {}) 
+           {:command-name ~(name command-name)
+            :arity        ~(count args)
+            :argspec      '~args})))))
 
