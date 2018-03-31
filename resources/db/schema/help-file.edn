@@ -1,0 +1,32 @@
+[
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :help-file/id
+  :db/valueType           :db.type/uuid
+  :db/cardinality         :db.cardinality/one
+  :db/doc                 "A help file's UUID"
+  :db/unique              :db.unique/identity
+  :db.install/_attribute  :db.part/db}
+
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :help-file/name
+  :db/valueType           :db.type/string
+  :db/cardinality         :db.cardinality/one
+  :db/doc                 "A help file's primary name"
+  :db/unique              :db.unique/value
+  :db.install/_attribute  :db.part/db}
+
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :help-file/synonym
+  :db/valueType           :db.type/string
+  :db/cardinality         :db.cardinality/many
+  :db/doc                 "A help file's secondary name(s)"
+  :db/unique              :db.unique/value
+  :db.install/_attribute  :db.part/db}
+
+ {:db/id                  #db/id[:db.part/db]
+  :db/ident               :help-file/text
+  :db/valueType           :db.type/string
+  :db/cardinality         :db.cardinality/one
+  :db/doc                 "A help file's text body"
+  :db.install/_attribute  :db.part/db}
+ ]
