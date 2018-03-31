@@ -71,7 +71,7 @@
     (if-not command-fn
       (send-to-self acc "No such command.")
       (let [command-arity    (-> command-fn (meta) (:arity))
-            {remaining-args :remaining-args
+            {remaining-args  :remaining-args
              parsed-args     :strings}
             (p/parse command-arity args)]
         ;; TODO pull true case handler from command metadata
