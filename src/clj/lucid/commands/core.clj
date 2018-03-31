@@ -1,5 +1,7 @@
 (ns lucid.commands.core
   (:require [clojure.string :as string]
+            [flatland.useful.experimental :refer [cond-let]]
+            [datomic.api :as db]
             [lucid.database :refer [speculate]]
             [lucid.commands.parser :as p]
             [lucid.commands.helpers :refer [defcommand]]
@@ -41,25 +43,37 @@
           " - "
           (:short help))))))
 
-;; TODO expand to more sources than just the command table
-(defcommand help [command]
-  {:help {:short "Explain a command"
-          :long  "$CHELP$! describes a command and its arguments."}}
-  (let [{:keys [help argspec] :as command-data}
-        (-> command-table
-          (get command)
-          (var-get)
-          (meta))]
+(defcommand help [topic]
+  {:help {:short "Lists information about the desired topic"
+          :long  "$CHELP$! describes a command and its arguments or some other topic."}}
+  (cond-let
+    ;; check for commands first
+    [command-var (get topic command-table)] 
+    (let [{:keys [help argspec]} (-> command-var
+                                   (var-get)
+                                   (meta))
+          args                   (->> argspec
+                                   (map name)
+                                   (interpose " ")
+                                   (apply str))]
+      ($sendln! $self (:long help))
+      ($sendln! $self "\n$WSyntax:$!")
+      ($sendln! $self (str "  $C" topic "$w " args "$!")))
 
-    (if-not command-data
-      ($sendln! $self (str "No such command as '" command "'."))
-      (let [args (->> argspec
-                   (map name)
-                   (interpose " ")
-                   (apply str))]
-        ($sendln! $self (:long help))
-        ($sendln! $self "\n$WSyntax:$!")
-        ($sendln! $self (str "  $C" command "$w " args "$!"))))))
+    ;; then look for help files
+    [help-text (db/q '[:find ?text .
+                       :in $ ?help-file-name
+                       :where (or
+                                [?help-file :help-file/name ?help-file-name]
+                                [?help-file :help-file/synonym ?help-file-name])
+                       [?help-file :help-file/text ?text]]
+                 (:db $server-info)
+                 topic)]
+    ($sendln! $self help-text)
+
+    ;; otherwise print an error
+    :else
+    ($sendln! $self (str "There is no command or help file named '" topic "'."))))
 
 (defn command-action [acc {:keys [message server-info]} _ _]
   (let [self-desc-id     (get-in acc [:login :descriptor-id])
