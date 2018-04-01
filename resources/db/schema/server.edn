@@ -1,0 +1,13 @@
+[
+ {:db/id          #db/id[:db.part/db]
+  :db/ident       :server/motd
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc         "The server's message of the day; shown when players log in"}
+
+ {:db/id          #db/id[:db.part/db]
+  :db/ident       :server/greeting
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc         "The server's greeting; shown when players connect"}
+ ]
