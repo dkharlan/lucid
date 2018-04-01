@@ -63,10 +63,10 @@
     ;; then look for help files
     [help-text (db/q '[:find ?text .
                        :in $ ?help-file-name
-                       :where (or
+                       :where (or-join [?help-file-name ?help-file]
                                 [?help-file :help-file/name ?help-file-name]
                                 [?help-file :help-file/synonym ?help-file-name])
-                       [?help-file :help-file/text ?text]]
+                              [?help-file :help-file/text ?text]]
                  (:db $server-info)
                  topic)]
     ($sendln! $self help-text)
