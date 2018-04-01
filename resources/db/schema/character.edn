@@ -1,25 +1,20 @@
-[
- {:db/id                  #db/id[:db.part/db]
-  :db/ident               :character/name
-  :db/valueType           :db.type/string
-  :db/cardinality         :db.cardinality/one
-  :db/doc                 "A character's name"
-  :db/unique              :db.unique/identity
-  :db.install/_attribute  :db.part/db}
+[{:db/id          #db/id[:db.part/db]
+  :db/ident       :character/name
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc         "A character's name"
+  :db/unique      :db.unique/value}
 
- {:db/id                  #db/id[:db.part/db]
-  :db/ident               :character/password-hash-and-salt
-  :db/valueType           :db.type/string
-  :db/cardinality         :db.cardinality/one
-  :db/doc                 "A character's password hash and salt"
-  :db.install/_attribute  :db.part/db}
+ {:db/id          #db/id[:db.part/db]
+  :db/ident       :character/password-hash-and-salt
+  :db/valueType   :db.type/string
+  :db/cardinality :db.cardinality/one
+  :db/doc         "A character's password hash and salt"}
 
- {:db/id                  #db/id[:db.part/db]
-  :db/ident               :character/body
-  :db/valueType           :db.type/ref
-  :db/cardinality         :db.cardinality/one
-  :db/isComponent         true
-  :db/doc                 "A character's body (see body.edn)"
-  :db.install/_attribute  :db.part/db}
- ]
+ {:db/id          #db/id[:db.part/db]
+  :db/ident       :character/body
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/one
+  :db/isComponent true
+  :db/doc         "A character's body (see body.edn)"}]
 
