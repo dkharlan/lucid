@@ -26,7 +26,7 @@
 ;; TODO catch and log exceptions
 ;; TODO pull the welcome message from somewhere
 ;; TODO holy wow there are a lot of nested, closed over state buckets...
-(defn- accept-new-connection! [descriptors states message-buffer stream info]
+(defn- accept-new-connection! [db-connection descriptors states message-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [connection-type  (:type info)
         descriptor-id    (uuid/v1)
@@ -39,7 +39,11 @@
     (swap! descriptors assoc descriptor-id (make-descriptor descriptor-id output-stream info))
     (swap! states assoc descriptor-id
       (sth/inc-fsm game {:descriptor-id descriptor-id}))
-    (s/put! output-stream "Welcome! What is your name?")
+    (s/put! output-stream
+      (db/q '[:find ?greeting .
+              :where [:server/info :server/greeting ?greeting]]
+        (db/db db-connection)))
+    (s/put! output-stream "What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
 (defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors db]
@@ -141,8 +145,8 @@
   (let [descriptors    (atom {})
         states         (atom {})
         message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
-        acceptor       (partial accept-new-connection! descriptors states message-buffer)
         db-connection  (db/connect db-uri)
+        acceptor       (partial accept-new-connection! db-connection descriptors states message-buffer)
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
         updater        (partial update! descriptors states db-connection message-buffer updater-signal)
         update-thread  (Thread. updater "update-thread")
