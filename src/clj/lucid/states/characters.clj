@@ -2,7 +2,8 @@
   (:require [lucid.states.helpers :as h]
             [lucid.characters :as chars]
             [lucid.commands.core :as cm]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [datomic.api :as db]))
 
 (def character-name-regex #"^[A-z]{3,}$")
 (def password-regex #"^[A-Za-z\d]{8,}$")
@@ -46,12 +47,15 @@
 (defn show-prompt [accumulator]
   (h/queue-stream-send-to-self accumulator "$!\n> "))
 
-(defn log-character-in [accumulator {{:keys [descriptors] :as server-info} :server-info} _ _]
+(defn log-character-in [accumulator {{:keys [db descriptors] :as server-info} :server-info} _ _]
   (let [descriptor-id  (get-in accumulator [:login :descriptor-id])
         character-name (get-in accumulator [:login :character-name])
         remote-addr    (get-in descriptors [descriptor-id :info :remote-addr])]
     (-> accumulator
-      (h/queue-stream-send-to-self "Welcome!")   ;; TODO replace with motd
+      (h/queue-stream-send-to-self
+        (db/q '[:find ?motd .
+                :where [:server/info :server/motd ?motd]]
+          db))
       (h/queue-log-event :info
         "Character" (str "\"" character-name "\"") "logged in from" remote-addr)
       (cm/call-command "look" server-info)

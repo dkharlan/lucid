@@ -36,7 +36,15 @@
       (conj
         {:room/name        "Default Starting Room"
          :room/tag         :character/starting-location
-         :room/description "Lucid requires a room with :room/tag equal to :character/starting-location; since you didn't provide one, a default has been created."}))))
+         :room/description "Lucid requires a room with :room/tag equal to :character/starting-location; since you didn't provide one, a default has been created."})
+
+      (does-not-have? :db/ident :server/info
+        ":db/ident entity named :server/info")
+      (conj
+        {:db/ident        :server/info
+         :server/motd     "This is the default message of the day. You should create a :db/ident named :server/info with :server/motd and :server/greeting attributes to set your own."
+         :server/greeting "This is the default greeting. You should create a :db/ident named :server/info with :server/motd and :server/greeting attributes to set your own."})
+      )))
 
 ;; TODO should change this to migrate! or something like that
 (defn reset-db! [uri]
