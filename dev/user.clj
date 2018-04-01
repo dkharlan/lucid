@@ -28,6 +28,7 @@
    (def $server
      (srv/make-server
        {:db-uri ldb/uri}))
+   (def $db-conn (:db-connection $server))
    (srv/start! $server)))
 
 (defn fig-start! []
