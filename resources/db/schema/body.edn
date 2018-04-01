@@ -1,8 +1,5 @@
-[
- {:db/id                  #db/id[:db.part/db]
-  :db/ident               :body/location
-  :db/valueType           :db.type/ref
-  :db/cardinality         :db.cardinality/one
-  :db/doc                 "The room (see room.edn) where this body is located"
-  :db.install/_attribute  :db.part/db}
- ]
+[{:db/id          #db/id[:db.part/db]
+  :db/ident       :body/location
+  :db/valueType   :db.type/ref
+  :db/cardinality :db.cardinality/one
+  :db/doc         "The room (see room.edn) where this body is located"}]
