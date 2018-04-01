@@ -54,6 +54,7 @@
     [:div {:class "footer"}
      [:input {:class ["input-box" "zero-fill"]
               :type "text"
+              :autoFocus true
               :on-key-down enter-handler}]]))
 
 (defn root [{:keys [buffer send-message!] :as props}]
