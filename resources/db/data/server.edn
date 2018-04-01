@@ -1,0 +1,6 @@
+[
+ {:db/ident        :server/info
+  :server/motd     "Welcome to the game!"
+  :server/greeting "*********\n* Lucid *\n*********\nCopyright (c) 2018 Dave Harlan\n"}
+ ]
+
