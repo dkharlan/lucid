@@ -75,23 +75,23 @@
     :else
     ($sendln! $self (str "There is no command or help file named '" topic "'."))))
 
-(defn command-action [acc {:keys [message server-info]} _ _]
-  (let [self-desc-id     (get-in acc [:login :descriptor-id])
-        send-to-self     #(update-in %1 [:side-effects :stream] conj
-                            {:destination self-desc-id :message %2})
-
-        [command args]   (string/split message #"\s+" 2)
-        command-fn       (var-get (get command-table command))]
-    (if-not command-fn
+(defn command-action [acc {:keys [event-data server-info]} _ _]
+  (let [self-desc-id        (get-in acc [:login :descriptor-id])
+        send-to-self        #(update-in %1 [:side-effects :stream] conj
+                               {:destination self-desc-id :message %2})
+        [command-name args] (string/split event-data #"\s+" 2)
+        command-var         (get command-table command-name)]
+    (if-not command-var
       (send-to-self acc "No such command.")
-      (let [command-arity    (-> command-fn (meta) (:arity))
+      (let [command-fn       (var-get command-var)
+            command-arity    (-> command-fn (meta) (:arity))
             {remaining-args  :remaining-args
              parsed-args     :strings}
             (p/parse command-arity args)]
         ;; TODO pull true case handler from command metadata
         (if (pos? remaining-args)
           (send-to-self acc
-            (str "'" command "' takes "
+            (str "'" command-name "' takes "
               command-arity (if (> command-arity 1) " arguments" " argument")
               " but you only provided " (count parsed-args) "."))
           (->> parsed-args

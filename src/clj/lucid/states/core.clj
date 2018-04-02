@@ -30,20 +30,20 @@
      [[_ {:descriptor-id _}]] -> {:action cs/add-descriptor-id} :awaiting-name
      [_]                      ->                                :initial]
     [:awaiting-name
-     [[_ {:server-info _ :message character-name-regex}] :guard cs/character-exists?] -> {:action cs/add-existing-character-name} :awaiting-password
-     [[_ {:server-info _ :message character-name-regex}]]                             -> {:action cs/add-new-character-name}      :awaiting-initial-password
+     [[_ {:server-info _ :event-data character-name-regex}] :guard cs/character-exists?] -> {:action cs/add-existing-character-name} :awaiting-password
+     [[_ {:server-info _ :event-data character-name-regex}]]                             -> {:action cs/add-new-character-name}      :awaiting-initial-password
      [_]                                                                                 -> {:action cs/print-name-rules}            :awaiting-name]
     [:awaiting-password
      [_ :guard cs/password-is-valid?] -> {:action cs/log-character-in}       :logged-in
      [_]                              -> {:action cs/print-invalid-password} :zombie]
     [:awaiting-initial-password
-     [[_ {:server-info _ :message password-regex}]] -> {:action cs/add-initial-password} :awaiting-password-confirmation
+     [[_ {:server-info _ :event-data password-regex}]] -> {:action cs/add-initial-password} :awaiting-password-confirmation
      [_]                                               -> {:action cs/print-password-rules} :awaiting-initial-password]
     [:awaiting-password-confirmation
-     [[_ {:server-info _ :message password-regex}] :guard cs/password-matches-initial?] -> {:action cs/create-character} :logged-in
+     [[_ {:server-info _ :event-data password-regex}] :guard cs/password-matches-initial?] -> {:action cs/create-character} :logged-in
      [_]                                                                                   -> {:action cs/print-goodbye}    :zombie]
     [:logged-in
-     [[_ {:server-info _ :message "quit"}]] -> {:action cs/print-goodbye}  :zombie ;; TODO replace me with a command
+     [[_ {:server-info _ :event-data "quit"}]] -> {:action cs/print-goodbye}  :zombie ;; TODO replace me with a command
      [_]                                    -> {:action cs/handle-command} :logged-in]
     [:zombie
      [_] -> :zombie]]

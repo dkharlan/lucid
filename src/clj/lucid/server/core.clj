@@ -20,18 +20,19 @@
   (swap! states dissoc descriptor-id)
   (log/info "Connection from" (:remote-addr info) "closed"))
 
-(defn- make-message [descriptor-id message]
-  {:descriptor-id descriptor-id :message message})
+(defn- make-event [descriptor-id event-type event-data]
+  {:descriptor-id descriptor-id
+   :event-type    event-type
+   :event-data    event-data})
 
 ;; TODO catch and log exceptions
-;; TODO pull the welcome message from somewhere
 ;; TODO holy wow there are a lot of nested, closed over state buckets...
-(defn- accept-new-connection! [db-connection descriptors states message-buffer stream info]
+(defn- accept-new-connection! [db-connection descriptors states event-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [connection-type  (:type info)
         descriptor-id    (uuid/v1)
-        make-message*    (partial make-message descriptor-id)
-        message-handler! (m/make-message-handler connection-type message-buffer make-message*)
+        make-event*      (partial make-event descriptor-id ::stream-input)
+        message-handler! (m/make-message-handler connection-type event-buffer make-event*)
         closed-handler!  (partial close! descriptors states descriptor-id info)
         output-stream    (m/make-output-stream connection-type stream closed-handler!)
         game             (st/game)]
@@ -45,20 +46,6 @@
         (db/db db-connection)))
     (s/put! output-stream "What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
-
-(defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors db]
-  (log/trace (format "Message from descriptor %s:" descriptor-id) message)
-  (let [state       (get states descriptor-id)
-        server-info {:descriptors descriptors
-                     :states      states
-                     :db          db}
-        input       {:server-info server-info
-                     :message     message}]
-    [descriptor-id input state]))
-
-(defn- event [[descriptor-id input state]]
-  (log/trace "Previous state:" state)
-  [descriptor-id input (sth/inc-fsm state input)])
 
 (defn- affect-streams! [[descriptor-id
                          {{:keys [descriptors]} :server-info :as input}
@@ -102,40 +89,67 @@
 
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
 (defn- collect! [stream]
-  (loop [messages []]
-    (let [message @(s/try-take! stream nil 0 ::nothing)] 
-      (if (or (nil? message) (= message ::nothing)) 
-        messages
-        (recur (conj messages message))))))
+  (loop [items []]
+    (let [item @(s/try-take! stream nil 0 ::nothing)] 
+      (if (or (nil? item) (= item ::nothing)) 
+        items
+        (recur (conj items item))))))
+
+(defmulti translate-event*
+  (fn [[_ {:keys [event-type]} _]]
+    event-type))
+
+(defmethod translate-event* ::stream-input [[descriptor-id input state]]
+  [descriptor-id input (sth/inc-fsm state input)])
+
+(defmethod translate-event* :default [[_ {:keys [event-type]} _ :as event-bundle]]
+  (log/warn "Ignoring event bundle with unknown :event-type" event-type "-" event-bundle))
+
+(defn translate-event [event-bundle]
+  (log/trace "Translating event:" event-bundle)
+  (translate-event* event-bundle))
+
+(defn- bundle-event [{:keys [descriptor-id event-data event-type]} states descriptors db]
+  (log/trace (str "Event" (if descriptor-id (format " from descriptor %s" descriptor-id) "") ":") event-type event-data)
+  (let [server-info {:descriptors descriptors
+                     :states      states
+                     :db          db}
+        input       {:server-info server-info
+                     :event-type  event-type
+                     :event-data  event-data}
+        state       (get states descriptor-id)]
+    [descriptor-id input state]))
 
 ;; TODO need more complete exception handling?
-(defn update! [descriptors states db-connection message-buffer updater-signal]
+(defn update! [descriptors states db-connection event-buffer updater-signal]
   (log/info "Update thread started.")
   (loop []
       (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
         (when (and (not= ::shutdown signal) (not (nil? signal)))
-          (doseq [message-info (collect! message-buffer)]
-            (log/trace "Message info:" message-info)
+          (doseq [event-info (collect! event-buffer)]
+            (log/trace "Event info:" event-info)
             (try
-              (-> message-info 
-                (bundle-message$ @states @descriptors (db/db db-connection)) 
-                event ;; <---- the stateless part
-                affect-streams!
+              (-> event-info 
+                (bundle-event @states @descriptors (db/db db-connection)) 
+                (translate-event)  ;; <---- the stateless part
+                (affect-streams!)
                 (persist-transactions! db-connection)
-                record-logs!
+                (record-logs!)
                 (transition-state! states descriptors))
               (catch Exception ex
-                (log/error "Uncaught exception while handling message from" (:descriptor-id message-info))
+                ;; TODO call out that event processing continues with the next event
+                ;; TODO make event-info :trace logged to prevent logging potentially sensitive details
+                (log/error "Uncaught exception while handling event" event-info)
                 (log/error ex))))
           (Thread/sleep 100) ;; TODO replace Thread/sleep with something more robust
           (recur))))
   (log/info "Update thread finished cleaning up."))
 
-(defn- server* [descriptors states db-connection message-buffer tcp-server http-server update-thread updater-signal]
+(defn- server* [descriptors states db-connection event-buffer tcp-server http-server update-thread updater-signal]
   {:descriptors    descriptors
    :states         states
    :db-connection  db-connection
-   :message-buffer message-buffer
+   :event-buffer   event-buffer
    :tcp-server     tcp-server
    :http-server    http-server
    :update-thread  update-thread
@@ -144,17 +158,17 @@
 (defn make-server [{:keys [ports db-uri]}]
   (let [descriptors    (atom {})
         states         (atom {})
-        message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
+        event-buffer   (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
         db-connection  (db/connect db-uri)
-        acceptor       (partial accept-new-connection! db-connection descriptors states message-buffer)
+        acceptor       (partial accept-new-connection! db-connection descriptors states event-buffer)
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
-        updater        (partial update! descriptors states db-connection message-buffer updater-signal)
+        updater        (partial update! descriptors states db-connection event-buffer updater-signal)
         update-thread  (Thread. updater "update-thread")
         http-server    (http/make-server acceptor
                          (or (:http ports) 8080))
         tcp-server     (telnet/make-server acceptor
                          (or (:tcp ports) 4000))]
-    (server* descriptors states db-connection message-buffer tcp-server http-server update-thread updater-signal)))
+    (server* descriptors states db-connection event-buffer tcp-server http-server update-thread updater-signal)))
 
 (defn start! [{:keys [tcp-server http-server update-thread] :as this}]
   (log/info "Launching update thread...")
