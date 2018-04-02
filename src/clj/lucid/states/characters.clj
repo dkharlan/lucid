@@ -8,23 +8,23 @@
 (def character-name-regex #"^[A-z]{3,}$")
 (def password-regex #"^[A-Za-z\d]{8,}$")
 
-(defn password-matches-initial? [[{{:keys [initial-password]} :login} {password :message}]]
+(defn password-matches-initial? [[{{:keys [initial-password]} :login} {password :event-data}]]
   (= password initial-password))
 
 (defn- add-character-name [accumulator input & _]
   (assoc-in accumulator [:login :character-name] input))
 
-(defn add-new-character-name [accumulator {character-name :message} & _]
+(defn add-new-character-name [accumulator {character-name :event-data} & _]
   (-> accumulator
     (add-character-name character-name)
     (h/queue-stream-send-to-self "Hello! I don't recognize you.  Please enter a new password.")))
 
-(defn add-existing-character-name [accumulator {character-name :message} & _]
+(defn add-existing-character-name [accumulator {character-name :event-data} & _]
   (-> accumulator
     (add-character-name character-name)
     (h/queue-stream-send-to-self (str "Welcome back, " character-name ". Please enter your password."))))
 
-(defn add-initial-password [accumulator {password :message} & _]
+(defn add-initial-password [accumulator {password :event-data} & _]
   (-> accumulator
     (assoc-in [:login :initial-password] password)
     (h/queue-stream-send-to-self "Please confirm your password.")))
@@ -78,10 +78,10 @@
 (defn print-goodbye [accumulator & _]
   (h/queue-stream-send-to-self accumulator "Goodbye."))
 
-(defn character-exists? [[_ {character-name :message {:keys [db]} :server-info}]]
+(defn character-exists? [[_ {character-name :event-data {:keys [db]} :server-info}]]
   (chars/character-exists? db character-name))
 
-(defn password-is-valid? [[{{:keys [character-name]} :login} {password :message {:keys [db]} :server-info}]]
+(defn password-is-valid? [[{{:keys [character-name]} :login} {password :event-data {:keys [db]} :server-info}]]
   (chars/password-is-valid? db character-name password))
 
 (defn handle-command [accumulator input prev-state next-state]

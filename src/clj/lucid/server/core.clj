@@ -47,10 +47,6 @@
     (s/put! output-stream "What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
-(defn- event [[descriptor-id input state]]
-  (log/trace "Previous state:" state)
-  [descriptor-id input (sth/inc-fsm state input)])
-
 (defn- affect-streams! [[descriptor-id
                          {{:keys [descriptors]} :server-info :as input}
                          {{{stream-side-effects :stream} :side-effects} :value :as next-state}]]
@@ -99,12 +95,19 @@
         items
         (recur (conj items item))))))
 
-(defmulti translate-event!
+(defmulti translate-event*
   (fn [[_ {:keys [event-type]} _]]
     event-type))
 
-(defmethod translate-event! ::stream-input [event-bundle]
-  (event event-bundle))
+(defmethod translate-event* ::stream-input [[descriptor-id input state]]
+  [descriptor-id input (sth/inc-fsm state input)])
+
+(defmethod translate-event* :default [[_ {:keys [event-type]} _ :as event-bundle]]
+  (log/warn "Ignoring event bundle with unknown :event-type" event-type "-" event-bundle))
+
+(defn translate-event [event-bundle]
+  (log/trace "Translating event:" event-bundle)
+  (translate-event* event-bundle))
 
 (defn- bundle-event [{:keys [descriptor-id event-data event-type]} states descriptors db]
   (log/trace (str "Event" (if descriptor-id (format " from descriptor %s" descriptor-id) "") ":") event-type event-data)
@@ -128,12 +131,14 @@
             (try
               (-> event-info 
                 (bundle-event @states @descriptors (db/db db-connection)) 
-                (event)  ;; <---- the stateless part
+                (translate-event)  ;; <---- the stateless part
                 (affect-streams!)
                 (persist-transactions! db-connection)
                 (record-logs!)
                 (transition-state! states descriptors))
               (catch Exception ex
+                ;; TODO call out that event processing continues with the next event
+                ;; TODO make event-info :trace logged to prevent logging potentially sensitive details
                 (log/error "Uncaught exception while handling event" event-info)
                 (log/error ex))))
           (Thread/sleep 100) ;; TODO replace Thread/sleep with something more robust
