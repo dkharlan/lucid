@@ -26,7 +26,6 @@
    :event-data    event-data})
 
 ;; TODO catch and log exceptions
-;; TODO pull the welcome message from somewhere
 ;; TODO holy wow there are a lot of nested, closed over state buckets...
 (defn- accept-new-connection! [db-connection descriptors states event-buffer stream info]
   (log/debug "New connection initiated:" info)
@@ -94,15 +93,11 @@
 
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
 (defn- collect! [stream]
-  (loop [messages []]
-    (let [message @(s/try-take! stream nil 0 ::nothing)] 
-      (if (or (nil? message) (= message ::nothing)) 
-        messages
-        (recur (conj messages message))))))
-
-;; couple types of messages:
-;;   :stream-input --> sent to state machine, persist resulting side effects
-;;   :side-effects
+  (loop [items []]
+    (let [item @(s/try-take! stream nil 0 ::nothing)] 
+      (if (or (nil? item) (= item ::nothing)) 
+        items
+        (recur (conj items item))))))
 
 (defmulti translate-event!
   (fn [[_ {:keys [event-type]} _]]
@@ -128,10 +123,10 @@
   (loop []
       (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
         (when (and (not= ::shutdown signal) (not (nil? signal)))
-          (doseq [message-info (collect! event-buffer)]
-            (log/trace "Message info:" message-info)
+          (doseq [event-info (collect! event-buffer)]
+            (log/trace "Event info:" event-info)
             (try
-              (-> message-info 
+              (-> event-info 
                 (bundle-event @states @descriptors (db/db db-connection)) 
                 (event)  ;; <---- the stateless part
                 (affect-streams!)
@@ -139,7 +134,7 @@
                 (record-logs!)
                 (transition-state! states descriptors))
               (catch Exception ex
-                (log/error "Uncaught exception while handling message from" (:descriptor-id message-info))
+                (log/error "Uncaught exception while handling event" event-info)
                 (log/error ex))))
           (Thread/sleep 100) ;; TODO replace Thread/sleep with something more robust
           (recur))))
