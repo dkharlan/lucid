@@ -20,8 +20,10 @@
   (swap! states dissoc descriptor-id)
   (log/info "Connection from" (:remote-addr info) "closed"))
 
-(defn- make-message [descriptor-id message]
-  {:descriptor-id descriptor-id :message message})
+(defn- make-event [descriptor-id event-type event-data]
+  {:descriptor-id descriptor-id
+   :event-type    event-type
+   :event-data    event-data})
 
 ;; TODO catch and log exceptions
 ;; TODO pull the welcome message from somewhere
@@ -30,8 +32,8 @@
   (log/debug "New connection initiated:" info)
   (let [connection-type  (:type info)
         descriptor-id    (uuid/v1)
-        make-message*    (partial make-message descriptor-id)
-        message-handler! (m/make-message-handler connection-type message-buffer make-message*)
+        make-event*    (partial make-event descriptor-id ::stream-input)
+        message-handler! (m/make-message-handler connection-type message-buffer make-event*)
         closed-handler!  (partial close! descriptors states descriptor-id info)
         output-stream    (m/make-output-stream connection-type stream closed-handler!)
         game             (st/game)]
@@ -45,16 +47,6 @@
         (db/db db-connection)))
     (s/put! output-stream "What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
-
-(defn- bundle-message$ [{:keys [descriptor-id message]} states descriptors db]
-  (log/trace (format "Message from descriptor %s:" descriptor-id) message)
-  (let [state       (get states descriptor-id)
-        server-info {:descriptors descriptors
-                     :states      states
-                     :db          db}
-        input       {:server-info server-info
-                     :message     message}]
-    [descriptor-id input state]))
 
 (defn- event [[descriptor-id input state]]
   (log/trace "Previous state:" state)
@@ -108,6 +100,28 @@
         messages
         (recur (conj messages message))))))
 
+;; couple types of messages:
+;;   :stream-input --> sent to state machine, persist resulting side effects
+;;   :side-effects
+
+(defmulti translate-event!
+  (fn [[_ {:keys [event-type]} _]]
+    event-type))
+
+(defmethod translate-event! ::stream-input [event-bundle]
+  (event event-bundle))
+
+(defn- bundle-event [{:keys [descriptor-id event-data event-type]} states descriptors db]
+  (log/trace (str "Event" (if descriptor-id (format " from descriptor %s" descriptor-id) "") ":") event-type event-data)
+  (let [server-info {:descriptors descriptors
+                     :states      states
+                     :db          db}
+        input       {:server-info server-info
+                     :event-type  event-type
+                     :event-data  event-data}
+        state       (get states descriptor-id)]
+    [descriptor-id input state]))
+
 ;; TODO need more complete exception handling?
 (defn update! [descriptors states db-connection message-buffer updater-signal]
   (log/info "Update thread started.")
@@ -118,11 +132,11 @@
             (log/trace "Message info:" message-info)
             (try
               (-> message-info 
-                (bundle-message$ @states @descriptors (db/db db-connection)) 
-                event ;; <---- the stateless part
-                affect-streams!
+                (bundle-event @states @descriptors (db/db db-connection)) 
+                (event)  ;; <---- the stateless part
+                (affect-streams!)
                 (persist-transactions! db-connection)
-                record-logs!
+                (record-logs!)
                 (transition-state! states descriptors))
               (catch Exception ex
                 (log/error "Uncaught exception while handling message from" (:descriptor-id message-info))
