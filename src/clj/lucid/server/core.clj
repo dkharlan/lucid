@@ -49,33 +49,34 @@
     (s/put! output-stream "What is your name?")
     (log/info "Accepted new connection from descriptor" descriptor-id "at" (:remote-addr info))))
 
-(defn- affect-streams! [[descriptor-id
-                         {{:keys [descriptors]} :server-info :as input}
-                         {{{stream-side-effects :stream} :side-effects} :value :as next-state}]]
+(defn- affect-streams! [{{{:keys [descriptors]} :server-info} :input
+                         {{{stream-side-effects :stream} :side-effects} :value} :state
+                         :as event-bundle}]
   (when-not (empty? stream-side-effects)
     (log/trace "Stream messages:" (vec stream-side-effects))
     (doseq [{:keys [destination message]} stream-side-effects]
       (let [destination-stream (get-in descriptors [destination :stream])]
         (s/put! destination-stream  message))))
-  [descriptor-id input next-state])
+  event-bundle)
 
-(defn- persist-transactions! [[descriptor-id input
-                               {{{db-transactions :db} :side-effects} :value :as next-state}] db-connection]
+(defn- persist-transactions! [{{{{db-transactions :db} :side-effects} :value} :state :as event-bundle}
+                              db-connection]
   (when-not (empty? db-transactions)
     (log/trace "Transacting" db-transactions)
     @(db/transact db-connection db-transactions))
-  [descriptor-id input next-state])
+  event-bundle)
 
-(defn- record-logs! [[descriptor-id input {{{log-entries :log} :side-effects} :value :as next-state}]]
+(defn- record-logs! [{{{{log-entries :log} :side-effects} :value} :state :as event-bundle}]
   (doseq [{:keys [level messages]} log-entries]
     (->> messages
       (interpose " ")
       (apply str)
       (log/log level)))
-  [descriptor-id input next-state])
+  event-bundle)
 
 ;; TODO see if there's a more elegant way to do this
-(defn- transition-state! [[descriptor-id _ {:keys [state] :as next-state}] states descriptors]
+(defn- transition-state! [{descriptor-id :descriptor-id {:keys [state] :as next-state} :state}
+                          states descriptors]
   ;; TODO do this for all side effect types instead of explicitly for each
   (if-not (= state :zombie)
     (swap! states assoc descriptor-id
@@ -98,13 +99,13 @@
         (recur (conj items item))))))
 
 (defmulti translate-event*
-  (fn [[_ {:keys [event-type]} _]]
+  (fn [{{:keys [event-type]} :input}]
     event-type))
 
-(defmethod translate-event* ::stream-input [[descriptor-id input state]]
-  [descriptor-id input (sth/inc-fsm state input)])
+(defmethod translate-event* ::stream-input [{:keys [state input] :as event-bundle}]
+  (assoc event-bundle :state (sth/inc-fsm state input)))
 
-(defmethod translate-event* :default [[_ {:keys [event-type]} _ :as event-bundle]]
+(defmethod translate-event* :default [{{:keys [event-type]} :input :as event-bundle}]
   (log/warn "Ignoring event bundle with unknown :event-type" event-type "-" event-bundle))
 
 (defn translate-event [event-bundle]
@@ -120,7 +121,9 @@
                      :event-type  event-type
                      :event-data  event-data}
         state       (get states descriptor-id)]
-    [descriptor-id input state]))
+    {:descriptor-id descriptor-id
+     :input         input
+     :state         state}))
 
 ;; TODO need more complete exception handling?
 (defn update! [descriptors states db-connection event-buffer updater-signal]
