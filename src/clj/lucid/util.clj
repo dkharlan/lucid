@@ -37,7 +37,7 @@
      (str
              (force timestamp_)       " "
              (force hostname_)        " "
-       (format "%-5s" (str/upper-case (name level)))   " "
+       (format "%-5s" (log/color-str :yellow (str/upper-case (name level))))   " "
        "[" (or ?ns-str ?file "?") ":" (or ?line "?") "]"
        "(" thread-name ")"
        " - "

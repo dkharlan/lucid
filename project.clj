@@ -25,7 +25,9 @@
   :source-paths ["src/clj"]
   :target-path "target/%s"
   :repl-options {:init (do
-                         (require '[alembic.still :as alembic]))}
+                         (use 'clojure.repl)
+                         (require '[alembic.still])
+                         (def $$$distill alembic.still/distill))}
   :profiles {:uberjar {:aot :all}
              :dev {:dependencies [[alembic "0.3.2"]
                                   [figwheel-sidecar "0.5.14"]

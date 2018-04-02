@@ -5,15 +5,11 @@
             [lucid.util :as util]
             [lucid.server.core :as srv]))
 
-(use 'clojure.repl)
-
+;; TODO needs to be moved somewhere global
 (log/merge-config!
   {:appenders
    {:println
     {:output-fn util/logger-output-with-thread}}})
-
-;; TODO this is only for datomic's in-memory transactor
-;;(ldb/reset! ldb/uri)
 
 (defonce $server nil)
 
