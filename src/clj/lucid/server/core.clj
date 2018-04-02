@@ -11,6 +11,8 @@
             [lucid.states.helpers :as sth]
             [lucid.database :as ldb]))
 
+;; TODO rename :event-buffer to :event-transactor-queue -- it communicates its intent better
+
 (defn- make-descriptor [id stream info]
   {:id id :stream stream :info info})
 
