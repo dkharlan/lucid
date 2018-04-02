@@ -28,12 +28,12 @@
 ;; TODO catch and log exceptions
 ;; TODO pull the welcome message from somewhere
 ;; TODO holy wow there are a lot of nested, closed over state buckets...
-(defn- accept-new-connection! [db-connection descriptors states message-buffer stream info]
+(defn- accept-new-connection! [db-connection descriptors states event-buffer stream info]
   (log/debug "New connection initiated:" info)
   (let [connection-type  (:type info)
         descriptor-id    (uuid/v1)
-        make-event*    (partial make-event descriptor-id ::stream-input)
-        message-handler! (m/make-message-handler connection-type message-buffer make-event*)
+        make-event*      (partial make-event descriptor-id ::stream-input)
+        message-handler! (m/make-message-handler connection-type event-buffer make-event*)
         closed-handler!  (partial close! descriptors states descriptor-id info)
         output-stream    (m/make-output-stream connection-type stream closed-handler!)
         game             (st/game)]
@@ -123,12 +123,12 @@
     [descriptor-id input state]))
 
 ;; TODO need more complete exception handling?
-(defn update! [descriptors states db-connection message-buffer updater-signal]
+(defn update! [descriptors states db-connection event-buffer updater-signal]
   (log/info "Update thread started.")
   (loop []
       (let [signal @(s/try-take! updater-signal nil 0 ::nothing)]
         (when (and (not= ::shutdown signal) (not (nil? signal)))
-          (doseq [message-info (collect! message-buffer)]
+          (doseq [message-info (collect! event-buffer)]
             (log/trace "Message info:" message-info)
             (try
               (-> message-info 
@@ -145,11 +145,11 @@
           (recur))))
   (log/info "Update thread finished cleaning up."))
 
-(defn- server* [descriptors states db-connection message-buffer tcp-server http-server update-thread updater-signal]
+(defn- server* [descriptors states db-connection event-buffer tcp-server http-server update-thread updater-signal]
   {:descriptors    descriptors
    :states         states
    :db-connection  db-connection
-   :message-buffer message-buffer
+   :event-buffer   event-buffer
    :tcp-server     tcp-server
    :http-server    http-server
    :update-thread  update-thread
@@ -158,17 +158,17 @@
 (defn make-server [{:keys [ports db-uri]}]
   (let [descriptors    (atom {})
         states         (atom {})
-        message-buffer (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
+        event-buffer   (s/stream* {:permanent? true :buffer-size 1000}) ;; TODO may have to fiddle with the buffer length
         db-connection  (db/connect db-uri)
-        acceptor       (partial accept-new-connection! db-connection descriptors states message-buffer)
+        acceptor       (partial accept-new-connection! db-connection descriptors states event-buffer)
         updater-signal (s/stream) ;; TODO what properties does this stream need? could see a buffer being necessary
-        updater        (partial update! descriptors states db-connection message-buffer updater-signal)
+        updater        (partial update! descriptors states db-connection event-buffer updater-signal)
         update-thread  (Thread. updater "update-thread")
         http-server    (http/make-server acceptor
                          (or (:http ports) 8080))
         tcp-server     (telnet/make-server acceptor
                          (or (:tcp ports) 4000))]
-    (server* descriptors states db-connection message-buffer tcp-server http-server update-thread updater-signal)))
+    (server* descriptors states db-connection event-buffer tcp-server http-server update-thread updater-signal)))
 
 (defn start! [{:keys [tcp-server http-server update-thread] :as this}]
   (log/info "Launching update thread...")
