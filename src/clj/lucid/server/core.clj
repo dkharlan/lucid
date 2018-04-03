@@ -9,7 +9,8 @@
             [lucid.server.methods :as m]
             [lucid.states.core :as st]
             [lucid.states.helpers :as sth]
-            [lucid.database :as ldb]))
+            [lucid.database :as ldb]
+            [lucid.queries :as q]))
 
 ;; TODO rename :event-buffer to :event-transactor-queue -- it communicates its intent better
 
@@ -17,9 +18,29 @@
   {:id id :stream stream :info info})
 
 ;; TODO think about how to manage state when connection goes linkdead (as opposed to a character logging out)
-(defn- close! [descriptors states descriptor-id info]
-  (swap! descriptors dissoc descriptor-id)
-  (swap! states dissoc descriptor-id)
+(defn- close-stream! [!descriptors !states db-connection !event-buffer descriptor-id info]
+
+  ;; TODO needs to be moved somewhere else
+  (let [states           @!states            
+        connection-state (get-in states [descriptor-id :state])]
+    (if (= :logged-in connection-state)
+      (let [players->descriptors (sth/players->descriptors states)
+            player-name          (get-in states [descriptor-id :value :login :character-name])
+            nearby-players       (map first
+                                   (db/q q/nearby-players-without-target
+                                     (db/db db-connection)
+                                     player-name
+                                     (keys players->descriptors)))]
+        (log/trace "Other players:" (vec nearby-players))
+        (if-not (empty? nearby-players)
+          (s/put! !event-buffer
+            {:event-type :async-stream-output
+             :event-data (vec (for [other-player-name nearby-players]
+                                {:destination (get players->descriptors other-player-name)
+                                 :message (str "$!" player-name " logs out.")}))})))))
+
+  (swap! !descriptors dissoc descriptor-id)
+  (swap! !states dissoc descriptor-id)
   (log/info "Connection from" (:remote-addr info) "closed"))
 
 (defn- make-event [descriptor-id event-type event-data]
@@ -35,7 +56,7 @@
         descriptor-id    (uuid/v1)
         make-event*      (partial make-event descriptor-id ::stream-input)
         message-handler! (m/make-message-handler connection-type event-buffer make-event*)
-        closed-handler!  (partial close! descriptors states descriptor-id info)
+        closed-handler!  (partial close-stream! descriptors states db-connection event-buffer descriptor-id info)
         output-stream    (m/make-output-stream connection-type stream closed-handler!)
         game             (st/game)]
     (s/consume message-handler! stream)
@@ -55,8 +76,9 @@
   (when-not (empty? stream-side-effects)
     (log/trace "Stream messages:" (vec stream-side-effects))
     (doseq [{:keys [destination message]} stream-side-effects]
-      (let [destination-stream (get-in descriptors [destination :stream])]
-        (s/put! destination-stream  message))))
+      (if-let [destination-stream (get-in descriptors [destination :stream])]
+        (s/put! destination-stream message)
+        (log/error "Unknown descriptor ID" destination))))
   event-bundle)
 
 (defn- persist-transactions! [{{{{db-transactions :db} :side-effects} :value} :state :as event-bundle}
@@ -94,7 +116,7 @@
       (s/close! (get-in @!descriptors [descriptor-id :stream])))))
 
 (defmethod transition-state! nil [_ _ _]
-  (log/trace "No descriptor; skipping state transition"))
+  (log/trace "Event bundle has no :descriptor-id; skipping state transition"))
 
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
 (defn- collect! [stream]
