@@ -1,5 +1,7 @@
 (ns lucid.commands.communication
   (:require [lucid.commands.helpers :refer [defcommand]]
+            [lucid.states.helpers :as h]
+            [lucid.queries :as q]
             [datomic.api :as db]))
 
 ;; TODO infer correct ending punctuation?
@@ -13,25 +15,11 @@
         (get-in states [$self :value :login :character-name])
 
         players->descriptors
-        (->> states
-          (vals)
-          (map #(get-in % [:value :login]))
-          (filter #(get % :character-name))
-          (map (fn [{:keys [character-name descriptor-id]}]
-                 [character-name descriptor-id]))
-          (into {}))
+        (h/players->descriptors states)
 
         player-names
         (map first
-          (db/q '[:find ?online-player-name 
-                  :in $ ?speaker-name [?online-player-name ...]
-                  :where [?speaker :character/name ?speaker-name]
-                         [?speaker :character/body ?speaker-body]
-                         [?speaker-body :body/location ?speaker-location]
-                         [?other-player-body :body/location ?speaker-location]
-                         [?other-player :character/body ?other-player-body]
-                         [?other-player :character/name ?other-player-name]
-                         [(= ?online-player-name ?other-player-name)]]
+          (db/q q/nearby-players-with-target
             db
             speaker-name
             (keys players->descriptors)))]
