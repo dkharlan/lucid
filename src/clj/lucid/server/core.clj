@@ -74,12 +74,15 @@
       (log/log level)))
   event-bundle)
 
-;; TODO see if there's a more elegant way to do this
-(defn- transition-state! [{descriptor-id :descriptor-id {:keys [state] :as next-state} :state}
-                          states descriptors]
-  ;; TODO do this for all side effect types instead of explicitly for each
-  (if-not (= state :zombie)
-    (swap! states assoc descriptor-id
+(defmulti transition-state!
+  (fn [{:keys [descriptor-id]} _ _]
+    descriptor-id))
+
+(defmethod transition-state! :default [{{:keys [state] :as next-state} :state
+                                        descriptor-id                    :descriptor-id}
+                                       !states !descriptors]
+  (if-not (= state :zombie) 
+    (swap! !states assoc descriptor-id
       (-> next-state
         (assoc-in [:value :side-effects :db] [])
         (assoc-in [:value :side-effects :stream] [])
@@ -88,7 +91,10 @@
       (log/trace "Trying to remove session descriptor")
       (if-let [character-name (get-in next-state [:value :login :character-name])]
         (log/info "Logging" (str "\"" character-name "\"") "out"))
-      (s/close! (get-in @descriptors [descriptor-id :stream])))))
+      (s/close! (get-in @!descriptors [descriptor-id :stream])))))
+
+(defmethod transition-state! nil [_ _ _]
+  (log/trace "No descriptor; skipping state transition"))
 
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
 (defn- collect! [stream]
@@ -102,16 +108,6 @@
   (fn [{{:keys [event-type]} :input}]
     event-type))
 
-(defmethod translate-event* ::stream-input [{:keys [state input] :as event-bundle}]
-  (assoc event-bundle :state (sth/inc-fsm state input)))
-
-(defmethod translate-event* :default [{{:keys [event-type]} :input :as event-bundle}]
-  (log/warn "Ignoring event bundle with unknown :event-type" event-type "-" event-bundle))
-
-(defn translate-event [event-bundle]
-  (log/trace "Translating event:" event-bundle)
-  (translate-event* event-bundle))
-
 (defn- bundle-event [{:keys [descriptor-id event-data event-type]} states descriptors db]
   (log/trace (str "Event" (if descriptor-id (format " from descriptor %s" descriptor-id) "") ":") event-type event-data)
   (let [server-info {:descriptors descriptors
@@ -124,6 +120,22 @@
     {:descriptor-id descriptor-id
      :input         input
      :state         state}))
+
+(defmethod translate-event* :default [{{:keys [event-type]} :input :as event-bundle}]
+  (log/warn "Ignoring event bundle with unknown :event-type" event-type "-" event-bundle))
+
+(defmethod translate-event* ::stream-input [{:keys [state input] :as event-bundle}]
+  (assoc event-bundle :state (sth/inc-fsm state input)))
+
+(defmethod translate-event* :async-stream-output [{{:keys [event-data]} :input :as event-bundle}]
+  (assoc event-bundle :state
+    {:value
+     {:side-effects
+      {:stream event-data}}}))
+
+(defn translate-event [event-bundle]
+  (log/trace "Translating event:" event-bundle)
+  (translate-event* event-bundle))
 
 ;; TODO need more complete exception handling?
 (defn update! [descriptors states db-connection event-buffer updater-signal]
