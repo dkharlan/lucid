@@ -1,5 +1,7 @@
 (ns lucid.states.helpers
-  (:require [reduce-fsm :as fsm]))
+  (:require [reduce-fsm :as fsm]
+            [datomic.api :as db]
+            [lucid.queries :as q]))
 
 (defn inc-fsm [state input]
   (fsm/fsm-event state input))
@@ -31,4 +33,16 @@
     (map (fn [{:keys [character-name descriptor-id]}]
            [character-name descriptor-id]))
     (into {})))
+
+;; TODO not sure if this goes here...
+(defn broadcast-near [{:keys [db states]} target-player-name message]
+  (let [players->descriptors (players->descriptors states)
+        nearby-players       (map first
+                               (db/q q/nearby-players-without-target
+                                 db
+                                 target-player-name
+                                 (keys players->descriptors)))]
+    (vec (for [other-player-name nearby-players]
+           {:destination (get players->descriptors other-player-name)
+            :message     message}))))
 

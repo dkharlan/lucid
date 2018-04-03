@@ -19,26 +19,16 @@
 
 ;; TODO think about how to manage state when connection goes linkdead (as opposed to a character logging out)
 (defn- close-stream! [!descriptors !states db-connection !event-buffer descriptor-id info]
-
-  ;; TODO needs to be moved somewhere else
   (let [states           @!states            
         connection-state (get-in states [descriptor-id :state])]
     (if (= :logged-in connection-state)
-      (let [players->descriptors (sth/players->descriptors states)
-            player-name          (get-in states [descriptor-id :value :login :character-name])
-            nearby-players       (map first
-                                   (db/q q/nearby-players-without-target
-                                     (db/db db-connection)
-                                     player-name
-                                     (keys players->descriptors)))]
-        (log/trace "Other players:" (vec nearby-players))
-        (if-not (empty? nearby-players)
+      (let [player-name         (get-in states [descriptor-id :value :login :character-name])
+            stream-side-effects (sth/broadcast-near {:db (db/db db-connection) :states states}
+                                  player-name (str "$!" player-name " logs out.") )]
+        (if-not (empty? stream-side-effects)
           (s/put! !event-buffer
             {:event-type :async-stream-output
-             :event-data (vec (for [other-player-name nearby-players]
-                                {:destination (get players->descriptors other-player-name)
-                                 :message (str "$!" player-name " logs out.")}))})))))
-
+             :event-data stream-side-effects})))))
   (swap! !descriptors dissoc descriptor-id)
   (swap! !states dissoc descriptor-id)
   (log/info "Connection from" (:remote-addr info) "closed"))
