@@ -23,3 +23,12 @@
 (defn queue-db-transactions [accumulator txns]
   (update-in accumulator [:side-effects :db] (comp vec concat) txns))
 
+(defn players->descriptors [states]
+  (->> states
+    (vals)
+    (map #(get-in % [:value :login]))
+    (filter #(get % :character-name))
+    (map (fn [{:keys [character-name descriptor-id]}]
+           [character-name descriptor-id]))
+    (into {})))
+
