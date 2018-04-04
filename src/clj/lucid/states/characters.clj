@@ -1,9 +1,10 @@
 (ns lucid.states.characters
-  (:require [lucid.states.helpers :as h]
+  (:require [taoensso.timbre :as log]
+            [datomic.api :as db]
+            [lucid.states.helpers :as h]
             [lucid.characters :as chars]
             [lucid.commands.core :as cm]
-            [taoensso.timbre :as log]
-            [datomic.api :as db]))
+            [lucid.database :as ldb]))
 
 (def character-name-regex #"^[A-z]{3,}$")
 (def password-regex #"^[A-Za-z\d]{8,}$")
@@ -58,6 +59,15 @@
           db))
       (h/queue-log-event :info
         "Character" (str "\"" character-name "\"") "logged in from" remote-addr)
+
+      ;; TODO find a more elegant way to re-use the accumulator
+      ((fn [acc]
+         ;; TODO will probably need a general queue-side-effects helper eventually
+         (h/queue-stream-multiple-sends acc
+           (h/broadcast-near
+             (update-in server-info [:db] ldb/speculate (get-in acc [:side-effects :db]))
+             character-name (str character-name " logged in.")))))
+
       (cm/call-command "look" server-info)
       (show-prompt))))
 

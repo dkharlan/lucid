@@ -1,7 +1,8 @@
 (ns lucid.commands.perception
   (:require [clojure.string :as string]
             [datomic.api :as db]
-            [lucid.commands.helpers :refer [defcommand]]))
+            [lucid.commands.helpers :refer [defcommand]]
+            [lucid.queries :as q]))
 
 ;; TODO see if these queries can be combined
 (defcommand look []
@@ -24,15 +25,7 @@
 
         inhabitants
         (map first
-          (db/q '[:find ?logged-in-cn
-                  :in $ ?cn [?logged-in-cn ...]
-                  :where [?c :character/name ?cn]
-                         [?c :character/body ?cb]
-                         [?cb :body/location ?r]
-                         [?b :body/location ?r]
-                         [?logged-in-c :character/body ?b]
-                         [?logged-in-c :character/name ?logged-in-cn]
-                         [(!= ?b ?cb)]]
+          (db/q q/nearby-players-without-target
             db
             self-name
             (map #(get-in % [:value :login :character-name]) (vals states))))

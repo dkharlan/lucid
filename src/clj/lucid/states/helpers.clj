@@ -1,5 +1,7 @@
 (ns lucid.states.helpers
-  (:require [reduce-fsm :as fsm]))
+  (:require [reduce-fsm :as fsm]
+            [datomic.api :as db]
+            [lucid.queries :as q]))
 
 (defn inc-fsm [state input]
   (fsm/fsm-event state input))
@@ -9,6 +11,9 @@
 
 (defn queue-stream-send [accumulator desc message]
   (update-in accumulator [:side-effects :stream] conj {:destination desc :message message}))
+
+(defn queue-stream-multiple-sends [accumulator stream-side-effects]
+  (update-in accumulator [:side-effects :stream] (comp vec concat) stream-side-effects))
 
 (defn queue-stream-send-to-self [accumulator message]
   (let [self (get-in accumulator [:login :descriptor-id])]
@@ -22,4 +27,25 @@
 
 (defn queue-db-transactions [accumulator txns]
   (update-in accumulator [:side-effects :db] (comp vec concat) txns))
+
+(defn players->descriptors [states]
+  (->> states
+    (vals)
+    (map #(get-in % [:value :login]))
+    (filter #(get % :character-name))
+    (map (fn [{:keys [character-name descriptor-id]}]
+           [character-name descriptor-id]))
+    (into {})))
+
+;; TODO not sure if this goes here...
+(defn broadcast-near [{:keys [db states]} target-player-name message]
+  (let [players->descriptors (players->descriptors states)
+        nearby-players       (map first
+                               (db/q q/nearby-players-without-target
+                                 db
+                                 target-player-name
+                                 (keys players->descriptors)))]
+    (vec (for [other-player-name nearby-players]
+           {:destination (get players->descriptors other-player-name)
+            :message     message}))))
 
