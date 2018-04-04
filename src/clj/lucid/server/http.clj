@@ -68,6 +68,9 @@
     (GET "/connect" request
       (websocket-handler new-connection-handler! request))))
 
+;; TODO the complected close handlers here make this prone to deadlock.
+;; TODO using s/connect instead of s/consume would probably obviate the
+;; TODO need to do this anyway
 (defmethod m/make-output-stream :http [_ stream close-handler]
   (let [output-stream    (s/stream)
         http-color-state (atom
@@ -84,10 +87,14 @@
     (s/on-closed output-stream
       (fn []
         (close-handler)
-        (s/close! stream)))
+        (log/trace "Trying to close HTTP output stream")
+        (s/close! stream)  ;; TODO saw one instance of deadlock here
+        (log/trace "Closed HTTP output stream")))
     (s/on-closed stream
       (fn []
-        (s/close! output-stream)))
+        (log/trace "Trying to close HTTP websocket stream")
+        (s/close! output-stream)
+        (log/trace "Closed HTTP websocket stream")))
     output-stream))
 
 ;; TODO combine these last two
