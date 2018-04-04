@@ -12,6 +12,9 @@
 (defn queue-stream-send [accumulator desc message]
   (update-in accumulator [:side-effects :stream] conj {:destination desc :message message}))
 
+(defn queue-stream-multiple-sends [accumulator stream-side-effects]
+  (update-in accumulator [:side-effects :stream] (comp vec concat) stream-side-effects))
+
 (defn queue-stream-send-to-self [accumulator message]
   (let [self (get-in accumulator [:login :descriptor-id])]
     (queue-stream-send accumulator self message)))
