@@ -71,6 +71,22 @@
         (log/error "Unknown descriptor ID" destination))))
   event-bundle)
 
+(defn affect-descriptors! [{{{{descriptor-mutations :descriptor} :side-effects} :value} :state :as event-bundle} !descriptors]
+  (when-not (empty? descriptor-mutations)
+    (log/trace "Descriptor mutations:" descriptor-mutations)
+
+    ;; TODO will need to refactor this when more mutation types are added
+    (let [to-be-closed (remove nil?
+                         (for [{:keys [mutation-type] :as mutation} descriptor-mutations]
+                           (if (= mutation-type :close-connection)
+                             (:target-descriptor-id mutation))))]
+      (log/trace "Descriptors be closed:" (vec to-be-closed))
+      (when-not (empty? to-be-closed)
+        (let [descriptors @!descriptors]
+          (doseq [descriptor-id to-be-closed]
+            (s/close! (get-in descriptors [descriptor-id :stream])))))))
+  event-bundle)
+
 (defn- persist-transactions! [{{{{db-transactions :db} :side-effects} :value} :state :as event-bundle}
                               db-connection]
   (when-not (empty? db-transactions)
@@ -116,10 +132,6 @@
         items
         (recur (conj items item))))))
 
-(defmulti translate-event*
-  (fn [{{:keys [event-type]} :input}]
-    event-type))
-
 (defn- bundle-event [{:keys [descriptor-id event-data event-type]} states descriptors db]
   (log/trace (str "Event" (if descriptor-id (format " from descriptor %s" descriptor-id) "") ":") event-type event-data)
   (let [server-info {:descriptors descriptors
@@ -133,11 +145,21 @@
      :input         input
      :state         state}))
 
+(defmulti translate-event*
+  (fn [{{:keys [event-type]} :input}]
+    event-type))
+
 (defmethod translate-event* :default [{{:keys [event-type]} :input :as event-bundle}]
   (log/warn "Ignoring event bundle with unknown :event-type" event-type "-" event-bundle))
 
 (defmethod translate-event* ::stream-input [{:keys [state input] :as event-bundle}]
   (assoc event-bundle :state (sth/inc-fsm state input)))
+
+(defmethod translate-event* :descriptor-mutation [{{:keys [event-data]} :input :as event-bundle}]
+  (assoc event-bundle :state
+    {:value
+     {:side-effects
+      {:descriptor event-data}}}))
 
 (defmethod translate-event* :async-stream-output [{{:keys [event-data]} :input :as event-bundle}]
   (assoc event-bundle :state
@@ -162,6 +184,7 @@
                 (bundle-event @states @descriptors (db/db db-connection)) 
                 (translate-event)  ;; <---- the stateless part
                 (affect-streams!)
+                (affect-descriptors! descriptors)
                 (persist-transactions! db-connection)
                 (record-logs!)
                 (transition-state! states descriptors))
