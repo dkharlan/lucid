@@ -48,27 +48,53 @@
 (defn show-prompt [accumulator]
   (h/queue-stream-send-to-self accumulator "$!\n> "))
 
-(defn log-character-in [accumulator {{:keys [db descriptors] :as server-info} :server-info} _ _]
+(defn log-character-in [accumulator {{:keys [db descriptors states] :as server-info} :server-info} _ _]
   (let [descriptor-id  (get-in accumulator [:login :descriptor-id])
         character-name (get-in accumulator [:login :character-name])
-        remote-addr    (get-in descriptors [descriptor-id :info :remote-addr])]
-    (-> accumulator
+        remote-addr    (get-in descriptors [descriptor-id :info :remote-addr])
+
+        [existing-descriptor-id existing-state]
+        (some
+          (fn [[_ {{{existing-character-name :character-name} :login} :value} :as item]]
+            (if (= character-name existing-character-name)
+              item))
+          states)]
+    (cond-> accumulator
+
+      (not existing-descriptor-id) 
       (h/queue-stream-send-to-self
         (db/q '[:find ?motd .
                 :where [:server/info :server/motd ?motd]]
           db))
+
+      (not existing-descriptor-id)
       (h/queue-log-event :info
         "Character" (str "\"" character-name "\"") "logged in from" remote-addr)
 
+      existing-descriptor-id
+      (h/queue-log-event :info
+        "Replacing state for " (str "\"" character-name "\"") "with new login from" remote-addr)
+
+      ;; TODO needs a helper fn
+      existing-descriptor-id
+      (update-in [:side-effects :descriptor] conj
+        {:mutation-type :close-connection :target-descriptor-id existing-descriptor-id})
+
+      ;; TODO update existing-state's descriptor; will need a new side effect type
+
       ;; TODO find a more elegant way to re-use the accumulator
+      ;; TODO will probably need a general queue-side-effects helper eventually
+      (not existing-descriptor-id)
       ((fn [acc]
-         ;; TODO will probably need a general queue-side-effects helper eventually
          (h/queue-stream-multiple-sends acc
            (h/broadcast-near
              (update-in server-info [:db] ldb/speculate (get-in acc [:side-effects :db]))
              character-name (str character-name " logged in.")))))
 
+      true
       (cm/call-command "look" server-info)
+
+      true
       (show-prompt))))
 
 (defn create-character [accumulator input prev-state next-state]

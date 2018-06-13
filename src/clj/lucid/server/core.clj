@@ -102,12 +102,17 @@
       (log/log level)))
   event-bundle)
 
-(defmulti transition-state!
-  (fn [{:keys [descriptor-id]} _ _]
-    descriptor-id))
+;; TODO two things need to happen:
+;;   1) swap descriptor id in state login data structure
+;;   2) add old descriptor id's state under new descriptor id in states atom
 
-(defmethod transition-state! :default [{{:keys [state] :as next-state} :state
-                                        descriptor-id                    :descriptor-id}
+;; TODO what does this do when non-state affecting messages come through?
+(defmethod transition-state!* :default [{{{descriptor-side-effects :descriptors} :side-effects
+                                         state :state
+                                         :as next-state}
+                                        :state
+                                        descriptor-id
+                                        :descriptor-id}
                                        !states !descriptors]
   (if-not (= state :zombie) 
     (swap! !states assoc descriptor-id
@@ -121,8 +126,46 @@
         (log/info "Logging" (str "\"" character-name "\"") "out"))
       (s/close! (get-in @!descriptors [descriptor-id :stream])))))
 
-(defmethod transition-state! nil [_ _ _]
+(defmethod transition-state!* nil [_ _ _]
   (log/trace "Event bundle has no :descriptor-id; skipping state transition"))
+
+;; TODO refactor when there are other side-effect types affecting states
+(defn transition-state! [event-bundle !states !descriptors]
+  (let [state-side-effects (get-in event-bundle [:state :value :side-effects :state])]
+
+    ;; TODO get this down to one swap!
+    (doseq [{:keys [mutation-type] :as side-effect} state-side-effects]
+      (case mutation-type
+        :replace-descriptor-id
+        (let [{:keys [target-descriptor-id replacement-descriptor-id]} side-effect]
+          (swap! states!
+            (fn [states]
+              (let [state (-> states
+                            (get target-descriptor-id)
+                            (assoc-in [:])
+                            )]
+                ))))))
+
+    (transition-state!*
+
+      (if-not descriptor-side-effects
+        event-bundle
+        (loop [event-bundle event-bundle
+               [effect & other-effects] descriptor-side-effects]
+          (if-not effect
+            event-bundle
+            (do
+              (swap! )
+              (recur
+                )
+              )
+            )))
+      
+      !states !descriptors)
+
+    (-> event-bundle
+      ()
+      (transition-state!* !states !descriptors))))
 
 ;; TODO see if there's an easier / more succint / more idiomatic way to do this
 (defn- collect! [stream]
@@ -167,6 +210,7 @@
      {:side-effects
       {:stream event-data}}}))
 
+;; just for trace logging
 (defn translate-event [event-bundle]
   (log/trace "Translating event:" event-bundle)
   (translate-event* event-bundle))

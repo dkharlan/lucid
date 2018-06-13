@@ -47,5 +47,5 @@
      [_]                                    -> {:action cs/handle-command} :logged-in]
     [:zombie
      [_] -> :zombie]]
-   :default-acc {:side-effects {:stream [] :db [] :log []}}
+   :default-acc {:side-effects {:stream [] :db [] :log [] :descriptor [] :state []}}
    :dispatch :event-acc-vec)
